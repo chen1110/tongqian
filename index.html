@@ -1,0 +1,1346 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>铜钱镇妖</title>
+<style>html,body{margin:0;height:100%;background:#0e0820;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}canvas{display:block}</style>
+</head><body><canvas id="game"></canvas>
+<script>
+// 《铜钱镇妖》数据表。名称与数值以 策划/铜钱镇妖_策划案v1.md 为准；代码只读这里，不写死内容。
+const DATA = {
+  // 数值公式（策划案 5.3）
+  K: [1.00, 1.12, 1.24, 1.36, 1.8, 3.2],
+  TYPE_ATK: { n: 1, e: 1.15, b: 1.1 }, // 策划 5.3 原为 1.3/1.6，v0 实测大妖打不过，下调
+  TYPE_XIANG: { n: 1, e: 2, b: 4 },
+  KAIGUANG: [1.0, 1.25, 1.5, 1.8, 2.2],
+  KG_COST: [null, [60, 0], [150, 0], [400, 2], [900, 5]], // 升到 Lv2..Lv5：[香火, 妖丹]
+  RARITY: ['凡', '良', '珍', '绝'],
+  RARITY_MUL: [1, 2, 4, 8],
+  PRICE: [80, 220, 600, 1600],
+  BAG_SLOTS: [[1, 3], [2, 4], [5, 5], [9, 6], [13, 7], [17, 8]], // [解锁章, 槽数]
+  FU_SLOTS: [[0, 1], [15, 2], [40, 3], [80, 4], [140, 5], [220, 6]], // [道行星数, 槽数]
+
+  CHAPTERS: [
+    { id: 1, name: '荒山野径', bg: 'bg1', teach: '按住屏幕拖动瞄准，松手撒钱；撞到朱砂钉，整发暴击。' },
+    { id: 2, name: '乱葬岗', bg: 'bg2', teach: '铜钱落进葫芦，本发伤害乘 1.5；妖怪的护盾要先打掉。' },
+    { id: 3, name: '竹林小径', bg: 'bg3', teach: '黑色封印钉会削减本发伤害；搅阵会打乱符钉。' },
+    { id: 4, name: '山神破庙', bg: 'bg4', teach: '小妖会先替主子挨打；大妖半血后换招。' },
+  ],
+  // 每章 6 关：妖怪 id、阵型模板编号
+  LEVELS: {
+    1: [['lanluli', 0], ['denglong', 1], ['shanxiao', 2], ['lanluli', 3], ['dujiao', 4], ['lidaxian', 5]],
+    2: [['caoxie', 6], ['zhujie', 7], ['denglong', 8], ['caoxie', 9], ['laoshu', 0], ['gudi', 3]],
+    3: [['zhiren', 1], ['zhujie', 2], ['shanxiao', 5], ['zhiren', 6], ['dujiao', 7], ['qingzhu', 8]],
+    4: [['caoxie', 9], ['zhiren', 4], ['denglong', 1], ['shanxiao', 2], ['laoshu', 3], ['nisu', 5]],
+  },
+
+  // 意图：t 类型；v 倍率（atk/heavy 乘 ATK；shield/heal 乘妖怪最大血量）
+  // atk 扑击、charge 蓄力、heavy 重击、shield 结界、seal 封钉、summon 招小妖、heal 回血、swirl 搅阵
+  // 专属：yequ 夜曲（本发葫芦隐身）、shengsun 生笋、shouxiang 受香
+  MINION: { hp: 0.12, atk: 0.3 }, // 小妖：血量 = 主妖最大血量 × hp，每回合攻击 = ATK × atk
+  YAO: {
+    lanluli: { name: '拦路狸', type: 'n', note: '拦路只为讨口吃的，给了也不让。', ai: [[{ t: 'atk', v: 1 }, { t: 'atk', v: 0.8 }, { t: 'shield', v: 0.08 }]] },
+    caoxie: { name: '草鞋妖', type: 'n', note: '旧草鞋成了精，走得比主人还远。', ai: [[{ t: 'atk', v: 1 }, { t: 'shield', v: 0.15 }, { t: 'atk', v: 1.1 }]] },
+    denglong: { name: '灯笼鬼', type: 'n', note: '照路三十年，没照见过回家的人。', ai: [[{ t: 'atk', v: 0.9 }, { t: 'atk', v: 0.9 }, { t: 'heal', v: 0.1 }]] },
+    zhiren: { name: '纸人', type: 'n', note: '扎得太像，自己也信了。', ai: [[{ t: 'seal', v: 3 }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
+    zhujie: { name: '竹节精', type: 'n', note: '一节一节地长，一节一节地记仇。', ai: [[{ t: 'shield', v: 0.15 }, { t: 'atk', v: 1.2 }, { t: 'atk', v: 0.9 }]] },
+    shanxiao: { name: '山魈崽', type: 'n', note: '还小，但已经学会了凶。', ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2.2 }]] },
+    laoshu: { name: '老树精', type: 'e', note: '树大招风，它招妖。', minion: 'zhujie', ai: [[{ t: 'shield', v: 0.12 }, { t: 'summon' }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
+    dujiao: { name: '独脚山魈', type: 'e', note: '一只脚，跳得比你两只脚快。', ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2 }, { t: 'swirl' }, { t: 'shield', v: 0.08 }]] },
+    lidaxian: {
+      name: '狸大仙', type: 'b', note: '自封的大仙，供品要自己去偷。',
+      ai: [[{ t: 'atk', v: 0.8 }, { t: 'seal', v: 2 }, { t: 'atk', v: 0.7 }, { t: 'seal', v: 1 }], [{ t: 'atk', v: 0.8, seal: 1 }, { t: 'seal', v: 1 }, { t: 'atk', v: 0.6, seal: 1 }]],
+    },
+    gudi: {
+      name: '骨笛郎', type: 'b', note: '笛子是腿骨做的，曲子是哭声学的。',
+      ai: [[{ t: 'atk', v: 0.8 }, { t: 'shield', v: 0.06 }, { t: 'yequ', v: 0.6 }, { t: 'atk', v: 0.6 }], [{ t: 'yequ', v: 0.6 }, { t: 'shield', v: 0.05 }, { t: 'charge' }, { t: 'heavy', v: 1.5 }, { t: 'yequ', v: 0.6 }]],
+    },
+    qingzhu: {
+      name: '青竹娘', type: 'b', note: '竹林里的事，她都知道。',
+      ai: [[{ t: 'atk', v: 0.9 }, { t: 'shengsun' }, { t: 'seal', v: 2 }], [{ t: 'shengsun' }, { t: 'swirl' }, { t: 'atk', v: 1.2 }, { t: 'seal', v: 2 }]],
+    },
+    nisu: {
+      name: '泥塑假神', type: 'b', note: '有人上香，就有人当神。', minion: 'lanluli',
+      ai: [[{ t: 'shouxiang' }, { t: 'atk', v: 1 }, { t: 'shield', v: 0.05 }], [{ t: 'summon' }, { t: 'shouxiang' }, { t: 'atk', v: 1 }, { t: 'shield', v: 0.04 }, { t: 'atk', v: 0.8 }]],
+    },
+  },
+  INTENT: {
+    atk: { name: '扑击', icon: 'i_claw' }, charge: { name: '蓄力', icon: 'i_fist' }, heavy: { name: '重击', icon: 'i_fist' },
+    shield: { name: '结界', icon: 'i_shield' }, seal: { name: '封钉', icon: 'i_lock' }, summon: { name: '招小妖', icon: 'n_boss' },
+    heal: { name: '回血', icon: 'gourd' }, swirl: { name: '搅阵', icon: 'i_swirl' },
+    yequ: { name: '夜曲', icon: 'seal', tip: '本发葫芦隐身' }, shengsun: { name: '生笋', icon: 'seal', tip: '长出 6 颗竹钉' },
+    shouxiang: { name: '受香', icon: 'xiang', tip: '吸走 5 香火，回 10 血' },
+  },
+  // 图鉴全量 61 只（v0 只有前 12 只有立绘）
+  YAO_ALL: ['lanluli', 'caoxie', 'denglong', 'zhiren', 'zhujie', 'shanxiao', 'laoshu', 'dujiao', 'lidaxian', 'gudi', 'qingzhu', 'nisu',
+    '水鬼', '鲶须精', '芦苇婆', '纸船灯', '泥鳅郎', '蚌女', '老鼋将军', '落水书童', '摆渡人', '千目蛙', '断角蛟', '铁锚夜叉',
+    '画皮', '更夫影', '戏台脸谱', '赌鬼骰', '铜镜妖', '灯笼铺小鬼', '无头捕快', '提线傀儡', '千面狐', '惊堂木', '琵琶骨', '百鸣钟',
+    '沙蝎精', '风滚草鬼', '驿马骨', '胡杨木魅', '狼烟魂', '蜃蛤', '旱魃童', '戍卒亡魂', '鬼驿丞', '断戟将', '黄风母', '海市蜃',
+    '引路幡', '忘川鱼', '枉死鬼', '判官笔', '阴火', '锁链魂', '夜游神', '勾魂使', '千灯鬼母', '桥下影', '城隍假印', '无相', '孔方兄'],
+
+  // 铜钱：r 稀有度 0凡 1良；n/c 普伤/暴伤；fx 特效标记
+  COINS: {
+    tongqian: { name: '铜钱', r: 0, n: 2, c: 5, desc: '寻常铜钱，起手之物。' },
+    tieqian: { name: '铁钱', r: 0, n: 3, c: 6, desc: '弹性减三成，弹得少但砸得实。', fx: { bounce: 0.7 } },
+    yuqian: { name: '榆钱', r: 0, n: 1, c: 4, desc: '撞第 1 颗钉后分裂成 2 枚。', fx: { split: 2 } },
+    guqian: { name: '骨钱', r: 0, n: 2, c: 5, desc: '撞到的钉三成不碎，可再撞。', fx: { keep: 0.3 } },
+    zhupian: { name: '竹片', r: 0, n: 2, c: 4, desc: '发射初速加三成。', fx: { speed: 1.3 } },
+    zhiqian: { name: '纸钱', r: 0, n: 1, c: 3, desc: '撞封印钉不受罚，还把它变成青符钉。', fx: { paper: 1 } },
+    yulin: { name: '鱼鳞钱', r: 0, n: 2, c: 5, desc: '入葫芦回 3 血。', fx: { gourdHeal: 3 } },
+    beibi: { name: '贝币', r: 0, n: 2, c: 6, desc: '本发第 10 颗钉起，每颗加 2。', fx: { late: 2 } },
+    niwan: { name: '泥丸', r: 0, n: 3, c: 5, desc: '落底时炸开，最底一排钉全碎。', fx: { bomb: 1 } },
+    suiyin: { name: '碎银', r: 0, n: 2, c: 5, desc: '每撞 1 颗金箔钉，本发加 10。', fx: { goldBonus: 10 } },
+    wudi: { name: '五帝钱', r: 1, n: 2, c: 6, desc: '撞第 1 颗钉后分裂成 3 枚。', fx: { split: 3 } },
+    moding: { name: '墨锭', r: 1, n: 2, c: 6, desc: '撞过的钉留墨点不碎，下一发撞墨点钉加 3。', fx: { ink: 3 } },
+    zhusha: { name: '朱砂丸', r: 1, n: 2, c: 8, desc: '撞第 1 颗朱砂钉后，再把 2 颗随机钉变朱砂钉。', fx: { cinnabar: 2 } },
+  },
+  COINS_ALL: ['tongqian', 'tieqian', 'yuqian', 'guqian', 'zhupian', 'zhiqian', 'yulin', 'beibi', 'niwan', 'suiyin', 'wudi',
+    '镇魂铃', '桃木珠', '照妖镜', 'zhusha', '雷击木', '金蟾钱', '八卦镜', '风铃', 'moding', '玉蝉', '铃铛串',
+    '斩妖剑钱', '星斗钱', '紫金钵', '回魂钱', '飞剑', '阴阳钱', '雷公鼓', '定风珠', '镜花钱', '孔方兄', '太极钱', '万钱袋', '镇妖印', '天师钱'],
+
+  // 符箓：v 基础值，u 升阶后值
+  FU: {
+    kaimen: { name: '开门红', r: 1, desc: v => `每关第 1 发伤害乘 ${v}`, v: 3, u: 4.5 },
+    jubao: { name: '聚宝符', r: 0, desc: v => `葫芦宽加 ${v}%`, v: 30, u: 45 },
+    hushen: { name: '护身符', r: 0, desc: v => `每关开局 ${v} 护盾`, v: 10, u: 15 },
+    zhaocai: { name: '招财符', r: 0, desc: v => `金箔钉加 ${v} 颗`, v: 2, u: 3 },
+    dansha: { name: '丹砂符', r: 1, desc: v => `朱砂钉加 ${v} 颗`, v: 1, u: 2 },
+    huichun: { name: '回春符', r: 0, desc: v => `每撞 ${v} 钉回 1 血`, v: 15, u: 10 },
+    pojia: { name: '破甲符', r: 0, desc: v => `对护盾伤害乘 ${v}`, v: 1.5, u: 2.25 },
+    dingxin: { name: '定心符', r: 0, desc: v => `葫芦速度减 ${v}%`, v: 25, u: 37 },
+    lianhuan: { name: '连环符', r: 1, desc: v => `本发撞钉满 15 颗，伤害加 ${v}%`, v: 25, u: 38 },
+    yucai: { name: '余财符', r: 0, desc: v => `结算香火加 ${v}%`, v: 20, u: 30 },
+  },
+  FU_ALL: ['kaimen', 'jubao', 'hushen', 'zhaocai', 'dansha', 'huichun', 'pojia', 'dingxin', 'lianhuan', 'yucai',
+    '雷法符', '分身符', '逆流符', '辟邪符', '先手符', '怒符', '积德符', '洗钱符', '明目符', '机关符', '清心符', '斩首符', '驱小鬼符',
+    '铜墙符', '顿悟符', '二度顿悟符', '照魂符', '御风符', '富贵符', '孤注符', '百家符', '引雷符', '阴阳符', '倒悬符', '往生符',
+    '千钧符', '天罡符', '地煞符', '镇妖总符', '无字符'],
+
+  // 顿悟 20（策划案 3.7）
+  WU: [
+    { id: 'zhishui', name: '心如止水', desc: '葫芦速度减四成' },
+    { id: 'danxin', name: '丹心一点', desc: '朱砂钉加 2 颗' },
+    { id: 'dianshi', name: '点石成金', desc: '金箔钉加 4 颗' },
+    { id: 'wanli', name: '腕力', desc: '每发加 8 伤害' },
+    { id: 'jiandan', name: '剑胆', desc: '暴击伤害加三成' },
+    { id: 'kuanhuai', name: '宽怀', desc: '葫芦宽度加五成' },
+    { id: 'huichun', name: '回春', desc: '立即回复三成血' },
+    { id: 'pozhang', name: '破障', desc: '封印钉全碎，本关不再出现' },
+    { id: 'lianzhu', name: '连珠', desc: '下 3 发每发多射 1 枚铜钱（伤害减半）' },
+    { id: 'tianyan', name: '天眼', desc: '瞄准线延长，并标出第 1 颗钉' },
+    { id: 'leiyin', name: '雷引', desc: '3 颗青符钉变雷符钉' },
+    { id: 'qingming', name: '清明', desc: '符阵立即重画，剩一半就重画' },
+    { id: 'jishao', name: '积少成多', desc: '本发每撞 10 钉，伤害加 15%' },
+    { id: 'jieli', name: '借力', desc: '撞墙也算 1 次撞击' },
+    { id: 'zhenya', name: '镇压', desc: '妖怪下一次行动跳过' },
+    { id: 'jinshen', name: '金身', desc: '获得 15 护盾' },
+    { id: 'yishang', name: '以伤换伤', desc: '每发伤害加四成，每发自损 2 血' },
+    { id: 'hukou', name: '葫芦开口', desc: '葫芦倍率由 1.5 变 2' },
+    { id: 'zhongqian', name: '重钱', desc: '铜钱体积加三成' },
+    { id: 'yuyun', name: '余韵', desc: '没入葫芦的铜钱，三成几率回到钱匣再落一次' },
+  ],
+
+  ROLES: [
+    { id: 'daoshi', name: '云游道士', hp: 40, desc: '每发撞到的第 1 颗钉加 3 伤害', start: ['tongqian', 'tongqian', 'tongqian'], unlock: null },
+    { id: 'shusheng', name: '落第书生', hp: 36, desc: '本发每撞 10 颗钉，伤害加 10%', start: ['tongqian', 'tongqian', 'moding'], unlock: { ch: 2, xiang: 600 } },
+    { id: 'hunv', name: '狐女', hp: 32, desc: '朱砂钉加 1；暴伤加 20%', lock: '后续版本开放' },
+    { id: 'seng', name: '行脚僧', hp: 48, desc: '葫芦宽加 40%；入葫芦倍率 2', lock: '后续版本开放' },
+    { id: 'qianling', name: '？？？', hp: 30, desc: '？？？', lock: '传说击败某位大妖后现身' },
+  ],
+
+  GUIDE: {
+    1: '镇妖簿帮你记着，收藏本游戏，下次接着镇。',
+    3: '三星镇妖，干净利落。收藏本游戏，回头再刷。',
+  },
+};
+
+const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180,237],"burst":[626,0,256,234],"f_kaimen":[884,0,110,230],"f_jubao":[0,442,110,230],"f_hushen":[112,442,110,230],"f_zhaocai":[224,442,110,230],"f_dansha":[336,442,110,230],"f_huichun":[448,442,110,230],"f_pojia":[560,442,110,230],"f_dingxin":[672,442,110,230],"f_lianhuan":[784,442,110,230],"f_yucai":[896,442,110,230],"box":[0,674,180,208],"n_sign":[182,674,160,156],"n_elite":[344,674,150,156],"n_boss":[496,674,160,146],"seal":[658,674,160,140],"chest":[820,674,160,132],"c_tongqian":[0,884,128,128],"c_tieqian":[130,884,128,128],"c_yuqian":[260,884,128,128],"c_guqian":[390,884,128,128],"c_zhupian":[520,884,128,128],"c_zhiqian":[650,884,128,128],"c_yulin":[780,884,128,128],"c_beibi":[0,1014,128,128],"c_niwan":[130,1014,128,128],"c_suiyin":[260,1014,128,128],"c_wudi":[390,1014,128,128],"c_moding":[520,1014,128,128],"c_zhusha":[650,1014,128,128],"chest_open":[780,1014,160,128],"dan":[0,1144,128,128],"xiang":[130,1144,100,128],"btn":[232,1144,400,124],"fr_0":[634,1144,128,120],"fr_1":[764,1144,128,120],"fr_2":[894,1144,128,120],"fr_3":[0,1274,128,120],"cash":[130,1274,128,100],"i_claw":[260,1274,96,96],"i_shield":[358,1274,96,96],"i_lock":[456,1274,96,96],"i_fist":[554,1274,96,96],"i_swirl":[652,1274,96,96],"pin_qing":[750,1274,96,96],"pin_zhu":[848,1274,96,96],"pin_jin":[0,1396,96,96],"pin_lei":[98,1396,96,96],"pin_qingxin":[196,1396,96,96],"pin_feng":[294,1396,96,96],"star":[392,1396,96,96],"star_off":[490,1396,96,96],"b_back":[588,1396,96,96],"b_set":[686,1396,96,96],"hpbar":[0,1494,500,78]};
+// 《铜钱镇妖》v0 规则与绘制。数据见 data.js，合图坐标由构建脚本注入 ATLAS。
+'use strict';
+(function () {
+  const W = 720, H = 1570;
+  const Q = new URLSearchParams(location.search);
+  const AUTO = Q.has('auto'), SPEED = +(Q.get('speed') || 1);
+  const BASE = window.TQ_BASE || 'assets/';
+  const D = DATA;
+  const cv = document.getElementById('game'), ctx = cv.getContext('2d');
+  let SC = 1, OX = 0, OY = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    const w = innerWidth, h = innerHeight;
+    SC = Math.min(w / W, h / H);
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+    OX = (w - W * SC) / 2; OY = (h - H * SC) / 2;
+  }
+  addEventListener('resize', resize); resize();
+
+  // ---------------- 工具 ----------------
+  const rnd = Math.random, clamp = (v, a, b) => v < a ? a : v > b ? b : v, lerp = (a, b, t) => a + (b - a) * t;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  const CN = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二', '十三', '十四', '十五', '十六', '十七', '十八', '十九', '二十'];
+
+  // ---------------- 素材 ----------------
+  const IMG = {};
+  function loadImg(k, f) {
+    return new Promise(r => { const i = new Image(); i.onload = () => { IMG[k] = i; r(); }; i.onerror = () => r(); i.src = BASE + f; });
+  }
+  const FONTS = [['TQT', 't.woff2'], ['TQN', 'n.woff2'], ['TQB', 'b.woff2']];
+  const FF = { T: 'TQT', N: 'TQN', B: 'TQB' };
+  function font(size, f = 'B') { return `${size}px ${FF[f]},"PingFang SC","Microsoft YaHei",sans-serif`; }
+  function loadAll() {
+    const jobs = [loadImg('atlas', 'atlas.webp'), loadImg('bg_dg', 'bg_dg.jpg')];
+    for (const c of D.CHAPTERS) jobs.push(loadImg(c.bg, c.bg + '.jpg'));
+    for (const k in D.YAO) jobs.push(loadImg('yao_' + k, 'yao_' + k + '.webp'));
+    for (const r of ['daoshi', 'shusheng']) jobs.push(loadImg('role_' + r, 'role_' + r + '.webp'));
+    for (const [n, f] of FONTS) {
+      if (window.FontFace) jobs.push(new FontFace(n, `url(${BASE}fonts/${f})`).load().then(ff => document.fonts.add(ff)).catch(() => {}));
+    }
+    return Promise.all(jobs);
+  }
+  function spr(name, cx, cy, w, h, a = 1) {
+    const r = ATLAS[name]; if (!r || !IMG.atlas) return;
+    if (h === undefined) h = w * r[3] / r[2];
+    if (a !== 1) ctx.globalAlpha = a;
+    ctx.drawImage(IMG.atlas, r[0], r[1], r[2], r[3], cx - w / 2, cy - h / 2, w, h);
+    if (a !== 1) ctx.globalAlpha = 1;
+  }
+  function img(k, cx, cy, w, h, a = 1) {
+    const i = IMG[k]; if (!i) return;
+    if (a !== 1) ctx.globalAlpha = a;
+    ctx.drawImage(i, cx - w / 2, cy - h / 2, w, h);
+    if (a !== 1) ctx.globalAlpha = 1;
+  }
+  // 同色柔光：径向渐变贴图，边缘透明，不会留方形边
+  const GLOW = {};
+  function glow(color) {
+    if (GLOW[color]) return GLOW[color];
+    const c = document.createElement('canvas'); c.width = c.height = 128;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, color); gr.addColorStop(0.35, color + 'aa'); gr.addColorStop(1, color + '00');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+    return (GLOW[color] = c);
+  }
+
+  // ---------------- 文字与控件 ----------------
+  function text(s, x, y, size, color = '#fff', f = 'B', align = 'center', o = {}) {
+    ctx.font = font(size, f); ctx.textAlign = align; ctx.textBaseline = 'middle';
+    if (o.a !== undefined) ctx.globalAlpha = o.a;
+    if (o.stroke) { ctx.lineJoin = 'round'; ctx.lineWidth = o.sw || Math.max(3, size / 7); ctx.strokeStyle = o.stroke; ctx.strokeText(s, x, y); }
+    ctx.fillStyle = color; ctx.fillText(s, x, y);
+    if (o.a !== undefined) ctx.globalAlpha = 1;
+  }
+  function wrap(s, x, y, maxW, size, lh, color = '#fff', f = 'B', align = 'left') {
+    ctx.font = font(size, f);
+    let line = '', yy = y;
+    for (const ch of s) {
+      if (ch === '\n' || ctx.measureText(line + ch).width > maxW) { text(line, x, yy, size, color, f, align); yy += lh; line = ch === '\n' ? '' : ch; }
+      else line += ch;
+    }
+    if (line) text(line, x, yy, size, color, f, align);
+    return yy + lh;
+  }
+  function rrect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function panel(x, y, w, h, fill = 'rgba(30,18,52,0.88)', edge = '#d9a84a') {
+    rrect(x, y, w, h, 18); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = edge; ctx.stroke();
+  }
+  let HITS = [];
+  function hit(x, y, w, h, fn) { HITS.push({ x, y, w, h, fn }); }
+  function bigBtn(cx, cy, w, h, label, fn, o = {}) {
+    const dis = o.disabled;
+    spr('btn', cx, cy, w, h, dis ? 0.45 : 1);
+    text(label, cx, cy - (o.sub ? 12 : 3), o.size || 44, dis ? '#d8c8b0' : '#fff6d8', 'T', 'center', { stroke: '#7a1d08', sw: 6 });
+    if (o.sub) text(o.sub, cx, cy + 30, 22, '#ffe7a8', 'B');
+    if (!dis && fn) hit(cx - w / 2, cy - h / 2, w, h, fn);
+  }
+  function chip(x, y, w, h, label, fn, o = {}) {
+    rrect(x, y, w, h, h / 2);
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    if (o.disabled) { g.addColorStop(0, '#6a6070'); g.addColorStop(1, '#4a4050'); }
+    else if (o.gold) { g.addColorStop(0, '#ffd970'); g.addColorStop(1, '#c98a1c'); }
+    else { g.addColorStop(0, '#d8452a'); g.addColorStop(1, '#8f1f12'); }
+    ctx.fillStyle = g; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#f3cf74'; ctx.stroke();
+    text(label, x + w / 2, y + h / 2 + 1, o.size || 28, o.gold ? '#5a2a00' : '#fff6e0', o.f || 'B');
+    if (!o.disabled && fn) hit(x, y, w, h, fn);
+  }
+  function backBtn(fn) { spr('b_back', 60, 60, 80, 80); hit(15, 15, 90, 90, fn); }
+  function currencyBar(x, y) {
+    rrect(x, y - 26, 330, 52, 26); ctx.fillStyle = 'rgba(20,10,30,0.6)'; ctx.fill();
+    spr('xiang', x + 28, y, 36, 46); text(String(S.xiang), x + 52, y + 2, 30, '#ffe39a', 'N', 'left');
+    spr('dan', x + 178, y, 44, 44); text(String(S.dan), x + 204, y + 2, 30, '#ffb3a0', 'N', 'left');
+    spr('star', x + 280, y, 34, 34); text(String(totalStars()), x + 300, y + 2, 26, '#fff', 'N', 'left');
+  }
+
+  // ---------------- 存档 ----------------
+  const SAVE_KEY = 'tqzy_save_v1';
+  function defSave() {
+    return { v: 1, xiang: 0, dan: 0, coins: { tongqian: { lv: 1 } }, fus: {}, bag: ['tongqian', 'tongqian', 'tongqian'], equip: [],
+      role: 'daoshi', roles: { daoshi: 1 }, stars: {}, clears: {}, seen: {}, chests: {}, shop: null, guide: {}, tut: {}, sound: 1, ch: 1 };
+  }
+  function loadSave() {
+    try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); if (s && s.v === 1) return Object.assign(defSave(), s); } catch (e) { }
+    return defSave();
+  }
+  let S = loadSave();
+  function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { } }
+  if (Q.has('reset')) { S = defSave(); save(); }
+
+  const totalStars = () => Object.values(S.stars).reduce((a, b) => a + b, 0);
+  const chUnlocked = () => { let c = 1; while (c < D.CHAPTERS.length && S.clears[c + '-6']) c++; return c; };
+  const bagSlots = () => { let n = 3; for (const [c, k] of D.BAG_SLOTS) if (chUnlocked() >= c) n = k; return n; };
+  const fuSlots = () => { let n = 1; for (const [s, k] of D.FU_SLOTS) if (totalStars() >= s) n = k; return n; };
+  const roleDef = id => D.ROLES.find(r => r.id === id);
+  const maxHP = () => roleDef(S.role).hp + Math.floor(totalStars() / 10) * 4;
+  const fuVal = id => S.equip.includes(id) ? (S.fus[id].up ? D.FU[id].u : D.FU[id].v) : 0;
+  function levelInfo(c, l) {
+    const [yao, tpl] = D.LEVELS[c][l - 1], def = D.YAO[yao], type = l === 6 ? 'b' : l === 5 ? 'e' : 'n';
+    const g = Math.pow(1.2, c - 1);
+    const hp = Math.round(160 * g * D.K[l - 1]);
+    return { c, l, key: c + '-' + l, yao, def, tpl, type, hp, atk: 4 * Math.pow(1.15, c - 1) * D.TYPE_ATK[type],
+      std: Math.ceil(hp / (28 * g)) + 2, xiang: Math.round(30 * g * D.TYPE_XIANG[type]), ch: D.CHAPTERS[c - 1] };
+  }
+  const levelOpen = (c, l) => c <= chUnlocked() && (l === 1 || !!S.clears[c + '-' + (l - 1)]);
+  function nextLevel() {
+    for (let c = 1; c <= D.CHAPTERS.length; c++) for (let l = 1; l <= 6; l++) if (!S.clears[c + '-' + l] && levelOpen(c, l)) return [c, l];
+    return [chUnlocked(), 6];
+  }
+  function refreshShop() {
+    const pool = [];
+    for (const k in D.COINS) if (!S.coins[k]) pool.push({ kind: 'coin', id: k, r: D.COINS[k].r });
+    for (const k in D.FU) if (!S.fus[k]) pool.push({ kind: 'fu', id: k, r: D.FU[k].r });
+    shuffle(pool);
+    S.shop = { items: pool.slice(0, 4).map(it => Object.assign(it, { price: D.PRICE[it.r], sold: false })),
+      dan: { price: levelInfo(chUnlocked(), 1).xiang * 2, sold: false } };
+  }
+  if (!S.shop) refreshShop();
+  function grantRole(id) {
+    S.roles[id] = 1;
+    for (const k of roleDef(id).start) if (!S.coins[k]) S.coins[k] = { lv: 1 };
+  }
+
+  // ---------------- 声音 ----------------
+  let AC = null;
+  const SCALE = [523, 587, 659, 784, 880, 1047, 1175, 1319, 1568, 1760, 2093, 2349];
+  function snd(freq, dur = 0.09, type = 'triangle', vol = 0.12) {
+    if (!S.sound || !AC) return;
+    try {
+      const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+      o.connect(g); g.connect(AC.destination); o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) { }
+  }
+
+  // ---------------- 输入 ----------------
+  const P = { down: false, x: 0, y: 0, sx: 0, sy: 0, moved: false };
+  function toLocal(e) { return [(e.clientX - OX) / SC, (e.clientY - OY) / SC]; }
+  cv.addEventListener('pointerdown', e => {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (er) { } }
+    const [x, y] = toLocal(e); Object.assign(P, { down: true, x, y, sx: x, sy: y, moved: false });
+    if (!modal && scene.down) scene.down(x, y);
+  });
+  cv.addEventListener('pointermove', e => {
+    const [x, y] = toLocal(e); P.x = x; P.y = y;
+    if (P.down && Math.hypot(x - P.sx, y - P.sy) > 12) P.moved = true;
+    if (P.down && !modal && scene.move) scene.move(x, y);
+  });
+  function up(e) {
+    if (!P.down) return; P.down = false;
+    const [x, y] = toLocal(e);
+    if (!modal && scene.up && scene.up(x, y)) return;
+    if (P.moved && !(scene.tapAfterDrag)) { if (Math.hypot(x - P.sx, y - P.sy) > 30) return; }
+    for (let i = HITS.length - 1; i >= 0; i--) {
+      const h = HITS[i];
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) { snd(660, 0.06, 'sine', 0.08); h.fn(); return; }
+    }
+  }
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', () => { P.down = false; });
+
+  // ---------------- 场景框架 ----------------
+  let scene = null, modal = null, toastMsg = null, T = 0;
+  function go(s) { scene = s; modal = null; if (s.enter) s.enter(); }
+  function toast(msg, dur = 2) { toastMsg = { msg, t: dur }; }
+  function drawToast(dt) {
+    if (!toastMsg) return;
+    toastMsg.t -= dt; if (toastMsg.t <= 0) { toastMsg = null; return; }
+    const a = Math.min(1, toastMsg.t * 3);
+    ctx.globalAlpha = a; panel(70, 640, 580, 90, 'rgba(25,12,40,0.92)'); ctx.globalAlpha = 1;
+    text(toastMsg.msg, 360, 686, 28, '#ffe7a8', 'B', 'center', { a });
+  }
+  function msgBox(title, body, btn = '知道了', fn = null) {
+    modal = {
+      draw() {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+        spr('scroll', 360, 760, 560, 820);
+        text(title, 360, 520, 48, '#7a1d08', 'T');
+        wrap(body, 360 - 190, 620, 380, 30, 46, '#4a2a10', 'B');
+        bigBtn(360, 1030, 300, 96, btn, () => { modal = null; fn && fn(); }, { size: 36 });
+      },
+    };
+  }
+
+  // ======================================================================
+  // 道观（主界面）
+  // ======================================================================
+  const Home = {
+    enter() {
+      if (!S.tut.welcome) { S.tut.welcome = 1; save(); msgBox('铜钱镇妖', '山下妖物作乱。你是一名游方道士，以铜钱入阵，撞碎符钉，攒满法力镇妖。\n每打完一关，回道观整备再出征。'); }
+      else if (S.pendGuide) { const g = S.pendGuide; S.pendGuide = 0; save(); msgBox('收藏', D.GUIDE[g]); }
+    },
+    draw() {
+      img('bg_dg', 360, 785, 720, 1570);
+      const g = ctx.createLinearGradient(0, 0, 0, 340); g.addColorStop(0, 'rgba(10,5,30,0.7)'); g.addColorStop(1, 'rgba(10,5,30,0)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, 340);
+      currencyBar(24, 64);
+      text('铜钱镇妖', 360, 230, 108, '#ffd85e', 'T', 'center', { stroke: '#5a1206', sw: 10 });
+      text(`道行 ${totalStars()} 星   血量 ${maxHP()}`, 360, 320, 28, '#fff3d0', 'B', 'center', { stroke: '#1a0c28', sw: 5 });
+      const bob = Math.sin(T * 2) * 6;
+      img('role_' + (IMG['role_' + S.role] ? S.role : 'daoshi'), 360, 820 + bob, 440, 440);
+      const [c, l] = nextLevel();
+      bigBtn(360, 1180, 470, 146, '出征', () => { S.ch = c; go(MapS); }, { size: 64, sub: `下一关 ${c}-${l} ${D.CHAPTERS[c - 1].name}` });
+      const items = [['钱袋', 'c_tongqian', () => go(Bag)], ['符箓', 'f_kaimen', () => go(Fu)], ['香火铺', 'xiang', () => go(Shop)],
+        ['镇妖簿', 'scroll', () => go(Book)], ['角色', 'role', () => go(Role)]];
+      items.forEach(([name, ic, fn], i) => {
+        const x = 84 + i * 138, y = 1370;
+        ctx.beginPath(); ctx.arc(x, y, 58, 0, 7); ctx.fillStyle = 'rgba(60,14,10,0.85)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = '#e8b54c'; ctx.stroke();
+        if (ic === 'role') { ctx.save(); ctx.beginPath(); ctx.arc(x, y, 54, 0, 7); ctx.clip(); img('role_' + S.role, x, y + 34, 150, 150); ctx.restore(); }
+        else spr(ic, x, y, ic === 'scroll' ? 56 : 76, ic === 'f_kaimen' ? 84 : undefined);
+        text(name, x, y + 84, 30, '#fff3d0', 'T', 'center', { stroke: '#2a0c08', sw: 5 });
+        hit(x - 62, y - 62, 124, 160, fn);
+      });
+      text(S.sound ? '声音 开' : '声音 关', 90, 1525, 24, '#cdbfe8', 'B');
+      hit(20, 1495, 140, 60, () => { S.sound = S.sound ? 0 : 1; save(); });
+    },
+  };
+
+  // ======================================================================
+  // 章节地图与关前整备
+  // ======================================================================
+  const NODES = [[190, 1230], [500, 1090], [220, 950], [500, 800], [230, 650], [470, 470]];
+  const MapS = {
+    draw() {
+      const ch = D.CHAPTERS[S.ch - 1];
+      img(ch.bg, 360, 785, 720, 1570);
+      ctx.fillStyle = 'rgba(12,6,30,0.45)'; ctx.fillRect(0, 0, W, H);
+      backBtn(() => go(Home));
+      text(`第${CN[S.ch]}章  ${ch.name}`, 120, 62, 46, '#ffd85e', 'T', 'left', { stroke: '#3a0c06', sw: 7 });
+      // 路径
+      ctx.setLineDash([14, 14]); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,220,140,0.6)'; ctx.beginPath();
+      NODES.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); ctx.setLineDash([]);
+      NODES.forEach(([x, y], i) => {
+        const l = i + 1, open = levelOpen(S.ch, l), st = S.stars[S.ch + '-' + l] || 0;
+        const ic = l === 6 ? 'n_boss' : l === 5 ? 'n_elite' : 'n_sign';
+        if (open && !S.clears[S.ch + '-' + l]) { ctx.globalCompositeOperation = 'lighter'; const gs = 190 + Math.sin(T * 4) * 16; ctx.drawImage(glow('#ffc040'), x - gs / 2, y - gs / 2, gs, gs); ctx.globalCompositeOperation = 'source-over'; }
+        spr(ic, x, y, 140, undefined, open ? 1 : 0.35);
+        text(`${S.ch}-${l}`, x, y + 78, 34, open ? '#fff' : '#999', 'N', 'center', { stroke: '#2a0c08', sw: 6 });
+        for (let k = 0; k < 3; k++) spr(k < st ? 'star' : 'star_off', x - 34 + k * 34, y + 112, 32, 32, open ? 1 : 0.3);
+        if (open) hit(x - 80, y - 80, 160, 210, () => prep(S.ch, l));
+      });
+      // 章节切换
+      if (S.ch > 1) chip(30, 1340, 150, 64, '上一章', () => { S.ch--; });
+      if (S.ch < D.CHAPTERS.length) chip(540, 1340, 150, 64, '下一章', () => { S.ch++; }, { disabled: S.ch + 1 > chUnlocked() });
+      // 星数宝箱
+      const got = [1, 2, 3, 4, 5, 6].reduce((a, l) => a + (S.stars[S.ch + '-' + l] || 0), 0);
+      panel(30, 1430, 660, 120);
+      text(`本章 ${got}/18 星`, 140, 1490, 28, '#ffe7a8', 'B');
+      [6, 12, 18].forEach((need, i) => {
+        const x = 330 + i * 140, key = S.ch + '-' + need, done = S.chests[key], can = got >= need && !done;
+        spr(done ? 'chest_open' : 'chest', x, 1478, 96, undefined, got >= need || done ? 1 : 0.5);
+        text(done ? '已领' : `${need} 星`, x, 1528, 22, can ? '#ffd85e' : '#ddd', 'B');
+        if (can) { ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(glow('#ffcc50'), x - 70, 1478 - 70, 140, 140); ctx.globalCompositeOperation = 'source-over'; hit(x - 60, 1430, 120, 120, () => openChest(S.ch, need)); }
+      });
+    },
+  };
+  function openChest(c, need) {
+    S.chests[c + '-' + need] = 1;
+    const g = Math.pow(1.2, c - 1);
+    let msg;
+    if (need === 6) { const v = Math.round(150 * g); S.xiang += v; msg = `得香火 ${v}`; }
+    else if (need === 12) { S.dan += 2; msg = '得妖丹 2'; }
+    else {
+      const pool = [];
+      for (const k in D.COINS) if (!S.coins[k]) pool.push(['coin', k]);
+      for (const k in D.FU) if (!S.fus[k]) pool.push(['fu', k]);
+      if (pool.length) { const [kind, id] = pick(pool); if (kind === 'coin') { S.coins[id] = { lv: 1 }; msg = `得铜钱「${D.COINS[id].name}」`; } else { S.fus[id] = { up: 0 }; msg = `得符箓「${D.FU[id].name}」`; } }
+      else { S.xiang += 300; msg = '得香火 300'; }
+    }
+    save(); snd(880, 0.25, 'sine', 0.15);
+    msgBox('开宝箱', msg);
+  }
+  function prep(c, l) {
+    const L = levelInfo(c, l), st = S.stars[L.key] || 0;
+    modal = {
+      draw() {
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H);
+        spr('scroll', 360, 800, 640, 940);
+        text(`${L.key}  ${L.ch.name}`, 360, 410, 44, '#7a1d08', 'T');
+        const seen = S.seen[L.yao];
+        img('yao_' + L.yao, 360, 590, 260, 260);
+        text(L.def.name + (L.type === 'b' ? '  大妖' : L.type === 'e' ? '  精英' : ''), 360, 735, 36, '#4a1a08', 'T');
+        text(`血量 ${L.hp}    标准 ${L.std} 发`, 360, 785, 28, '#5a3a18', 'B');
+        for (let k = 0; k < 3; k++) spr(k < st ? 'star' : 'star_off', 300 + k * 60, 838, 50, 50);
+        text(`三星：通关  余血过半  ${L.std} 发内`, 360, 888, 24, '#6a4a28', 'B');
+        text('钱袋', 150, 950, 28, '#7a1d08', 'T', 'left');
+        S.bag.forEach((k, i) => spr('c_' + k, 250 + i * 62, 950, 54, 54));
+        text('符箓', 150, 1015, 28, '#7a1d08', 'T', 'left');
+        text(S.equip.length ? S.equip.map(k => D.FU[k].name).join('  ') : '未装备', 250, 1015, 26, '#4a2a10', 'B', 'left');
+        text(seen ? '' : '初见此妖', 360, 1060, 22, '#a03010', 'B');
+        bigBtn(240, 1150, 250, 96, '整备', () => { modal = null; go(Bag); }, { size: 36 });
+        bigBtn(490, 1150, 250, 96, '出征', () => startBattle(c, l), { size: 40 });
+        chip(290, 1240, 140, 56, '返回', () => { modal = null; });
+      },
+    };
+  }
+
+  // ======================================================================
+  // 战斗
+  // ======================================================================
+  const TOP = 575, BOT = 1362, LX = 360, LY = 545, GY = 1388, PIN_R = 18, GRAV = 1500, V0 = 960;
+  const PIN_COLOR = { qing: '#36e2c0', zhu: '#ff4a2a', jin: '#ffd040', lei: '#a070ff', qingxin: '#ffb0d0', feng: '#8a7a9a', bamboo: '#7fd060' };
+  const BREAKABLE = { qing: 1, zhu: 1, jin: 1, lei: 1, qingxin: 1 };
+
+  function layout(tpl) {
+    const P = [];
+    const add = (x, y) => P.push([x, y]);
+    const stag = (y0, y1, dx, dy, mask) => {
+      for (let y = y0, r = 0; y <= y1; y += dy, r++) for (let x = (r % 2 ? 40 + dx / 2 : 40) + 20; x <= 680; x += dx) if (!mask || mask(x, y)) add(x, y);
+    };
+    const cx = 360, cy = 960;
+    switch (tpl) {
+      case 0: stag(650, 1290, 80, 80); break; // 方格
+      case 1: stag(640, 1300, 68, 64, (x, y) => { const d = Math.abs(x - cx) / 340 + Math.abs(y - cy) / 360; return d < 0.55 || d > 0.7; }); break; // 菱格
+      case 2: add(cx, cy); for (const r of [72, 142, 212, 282, 352]) { const n = Math.round(2 * Math.PI * r / 62); for (let i = 0; i < n; i++) add(cx + r * Math.cos(i / n * 6.283 + r), cy + r * Math.sin(i / n * 6.283 + r)); } break; // 同心圆
+      case 3: { // 八卦
+        for (let i = 0; i < 8; i++) add(cx + 80 * Math.cos(i * 0.785), cy + 80 * Math.sin(i * 0.785));
+        for (let i = 0; i < 8; i++) { const a = i * 0.785 + 0.39, ux = Math.cos(a), uy = Math.sin(a); for (const d of [160, 220, 280, 340]) for (const s of [-56, 0, 56]) add(cx + ux * d - uy * s, cy + uy * d + ux * s); }
+        break;
+      }
+      case 4: stag(640, 1300, 72, 68, (x, y) => Math.hypot(x - cx, y - 790) < 170 || Math.hypot(x - cx, (y - 1110) * 1.1) < 240 || x < 110 || x > 610); break; // 葫芦形
+      case 5: for (let k = 0; k < 10; k++) { const dir = k % 2 ? 1 : -1; for (let i = 0; i < 11; i++) add(62 + i * 60 + (k % 2) * 30, 660 + k * 66 + dir * (i - 5) * 10); } break; // 斜坡
+      case 6: // 漏斗
+        for (let i = 0; i < 7; i++) { add(70 + i * 38, 650 + i * 52); add(650 - i * 38, 650 + i * 52); }
+        stag(690, 960, 70, 64, (x, y) => Math.abs(x - cx) < (y - 600) * 0.5); stag(1010, 1300, 68, 62); break;
+      case 7: stag(640, 1300, 70, 64, (x, y) => Math.abs(x - 190) < 120 || Math.abs(x - 530) < 120 || y > 1060 || (y > 760 && y < 860)); break; // 双塔
+      case 8: for (let r = 0; r < 9; r++) for (let x = 60 + (r % 2) * 36; x <= 670; x += 72) add(x, 650 + r * 78 + 26 * Math.sin(x / 90 + r)); break; // 波浪
+      case 9: { // 星形
+        const pts = []; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, R = i % 2 ? 140 : 330; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
+        for (let i = 0; i < 10; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % 10], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 62)); for (let k = 0; k < n; k++) add(lerp(x0, x1, k / n), lerp(y0, y1, k / n)); }
+        const inStar = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+        stag(650, 1300, 70, 66, (x, y) => inStar(x, y) || Math.hypot(x - cx, y - cy) > 300); break;
+      }
+    }
+    const out = [];
+    for (const [x, y] of P) {
+      if (x < 42 || x > 678 || y < 625 || y > 1310) continue;
+      if (out.some(p => Math.hypot(p[0] - x, p[1] - y) < 48)) continue;
+      out.push([x, y]);
+    }
+    return out;
+  }
+
+  let B = null;
+  function startBattle(c, l) {
+    const L = levelInfo(c, l);
+    S.seen[L.yao] = 1; save();
+    const hp = maxHP();
+    B = {
+      L, t: 0, time: 0, state: 'aim', st: 0, shots: 0, aim: 0, aiming: false, shake: 0,
+      yao: { hp: L.hp, max: L.hp, shield: 0, phase: 0, ai: 0, skip: 0, flash: 0, lunge: 0, minions: [] },
+      me: { hp, max: hp, shield: fuVal('hushen'), flash: 0 },
+      slots: layout(L.tpl), pins: [], coins: [], queue: [], fx: [], floats: [], orbs: [],
+      wu: {}, wuDone: 0, lianzhu: 0, earned: 0, critEver: false, gx: 360, gdir: 1, cur: null, showDmg: 0, dmgPop: 0,
+    };
+    B.pins = B.slots.map(([x, y]) => ({ x, y, type: 'qing', broken: false, cool: 0, flash: 0, lit: false, ink: false }));
+    assignSpecial();
+    B.intent = curIntent();
+    refillQueue();
+    calcLinks();
+    go(Battle);
+    if (!S.tut['ch' + c]) { S.tut['ch' + c] = 1; save(); B.banner = { text: L.ch.teach, t: 4 }; }
+  }
+  function curIntent() { const ai = B.L.def.ai[B.yao.phase] || B.L.def.ai[0]; return ai[B.yao.ai % ai.length]; }
+  function assignSpecial() {
+    const zhu = 2 + fuVal('dansha') + (B.wu.danxin ? 2 : 0), jin = 3 + fuVal('zhaocai') + (B.wu.dianshi ? 4 : 0);
+    const cands = shuffle(B.pins.filter(p => !p.broken && (p.type === 'qing' || p.type === 'zhu' || p.type === 'jin')));
+    cands.forEach(p => { p.type = 'qing'; });
+    cands.slice(0, zhu).forEach(p => { p.type = 'zhu'; });
+    cands.slice(zhu, zhu + jin).forEach(p => { p.type = 'jin'; });
+  }
+  function calcLinks() {
+    B.links = [];
+    const ps = B.pins;
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+      const d = Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y); if (d < 96) B.links.push([ps[i], ps[j]]);
+    }
+  }
+  function refillQueue() { while (B.queue.length < 4) B.queue.push(...shuffle(S.bag.slice())); }
+  function restoreBoard(reason) {
+    for (const p of B.pins) { if (p.broken) { p.broken = false; if (p.type === 'feng') p.type = 'qing'; } p.lit = false; }
+    assignSpecial();
+    if (reason) floatText(360, 960, reason, '#ffe28a', 46, 'T');
+    snd(523, 0.3, 'sine', 0.1);
+  }
+  function checkRedraw() {
+    const br = B.pins.filter(p => BREAKABLE[p.type]);
+    const alive = br.filter(p => !p.broken).length;
+    if (alive < br.length * (B.wu.qingming ? 0.5 : 0.3)) restoreBoard('符阵重画');
+  }
+  function gourdW() { return 120 * (1 + fuVal('jubao') / 100 + (B.wu.kuanhuai ? 0.5 : 0)); }
+  function gourdSpeed() { return 220 * (B.wu.zhishui ? 0.6 : 1) * (1 - fuVal('dingxin') / 100); }
+  function gourdMul() { return B.wu.hukou ? 2 : 1.5; }
+  const gourdHidden = () => B.intent && B.intent.t === 'yequ';
+
+  function floatText(x, y, s, color, size = 34, f = 'N', life = 0.9) { B.floats.push({ x, y, s, color, size, f, t: 0, life }); }
+  function burst(x, y, size = 90) { B.fx.push({ x, y, size, t: 0, life: 0.28 }); }
+
+  function fire() {
+    const ang = B.aim;
+    B.shots++;
+    const shot = B.cur = { hits: 0, crit: false, first: false, seal: 0, gold: 0, flat: 0, cinn: false, xiang: 0 };
+    const id = B.queue.shift(); refillQueue();
+    spawnCoin(id, LX, LY + 10, ang, 1);
+    if (B.lianzhu > 0) { B.lianzhu--; spawnCoin(id, LX, LY + 10, ang + 0.12, 0.5); }
+    B.state = 'fly'; B.st = 0; B.showDmg = 0;
+    snd(330, 0.12, 'square', 0.06);
+    if (!S.tut.aimed) { S.tut.aimed = 1; save(); }
+  }
+  function spawnCoin(id, x, y, ang, mul) {
+    const def = D.COINS[id], fx = def.fx || {}, v = V0 * (fx.speed || 1);
+    B.coins.push({ id, def, fx, x, y, vx: Math.sin(ang) * v, vy: Math.cos(ang) * v, r: 16 * (B.wu.zhongqian ? 1.3 : 1),
+      e: 0.72 * (fx.bounce || 1), mul, units: 0, flat: 0, caught: false, done: false, split: false, yuyun: false, life: 0, rot: 0, still: 0 });
+  }
+  function coinVals(c) {
+    const kg = D.KAIGUANG[(S.coins[c.id] ? S.coins[c.id].lv : 1) - 1];
+    return { n: c.def.n * kg, c: c.def.c * kg * (B.wu.jiandan ? 1.3 : 1) };
+  }
+  // 本发伤害（final=true 时计葫芦）
+  function shotDamage(final) {
+    const sh = B.cur; if (!sh) return 0;
+    let sum = 0, anyG = false;
+    for (const c of B.coins) {
+      const v = coinVals(c), g = final && c.caught ? gourdMul() : 1;
+      if (c.caught) anyG = true;
+      sum += (c.units * (sh.crit ? v.c : v.n) + c.flat) * g;
+    }
+    const flat = sh.flat + (B.wu.wanli ? 8 : 0);
+    sum += flat * (final && anyG ? gourdMul() : 1);
+    let m = 1;
+    if (B.wu.yishang) m *= 1.4;
+    if (B.shots === 1 && fuVal('kaimen')) m *= fuVal('kaimen');
+    if (B.wu.jishao) m *= 1 + 0.15 * Math.floor(sh.hits / 10);
+    if (S.role === 'shusheng') m *= 1 + 0.1 * Math.floor(sh.hits / 10);
+    if (fuVal('lianhuan') && sh.hits >= 15) m *= 1 + fuVal('lianhuan') / 100;
+    m *= Math.pow(0.8, sh.seal);
+    return Math.round(sum * m);
+  }
+  function countHit(c, p) {
+    const sh = B.cur;
+    sh.hits++; c.units += c.mul;
+    if (!sh.first) { sh.first = true; if (S.role === 'daoshi') sh.flat += 3; }
+    if (c.fx.late && sh.hits >= 10) c.flat += c.fx.late * c.mul;
+    if (p) {
+      if (p.type === 'zhu') {
+        if (!sh.crit) { B.shake = 12; floatText(p.x, p.y - 40, '暴击', '#ff5a3a', 44, 'T'); snd(196, 0.25, 'sawtooth', 0.08); if (!B.critEver) { B.critEver = true; } }
+        sh.crit = true;
+        if (c.fx.cinnabar && !sh.cinn) { sh.cinn = true; shuffle(B.pins.filter(q => !q.broken && q.type === 'qing')).slice(0, c.fx.cinnabar).forEach(q => { q.type = 'zhu'; q.flash = 0.5; }); }
+      }
+      if (p.type === 'jin') { sh.xiang += 2; sh.gold++; if (c.fx.goldBonus) c.flat += c.fx.goldBonus * c.mul; floatText(p.x, p.y - 30, '香火+2', '#ffd85e', 26, 'B'); }
+      if (p.ink) { p.ink = false; c.flat += 3 * c.mul; }
+    }
+    const hv = fuVal('huichun'); if (hv && sh.hits % hv === 0) healMe(1);
+    snd(SCALE[(sh.hits - 1) % 12], 0.1, 'triangle', 0.09);
+    B.dmgPop = 1;
+  }
+  function healMe(v) { B.me.hp = Math.min(B.me.max, B.me.hp + v); floatText(110, 250, '+' + v, '#7dff9a', 30); }
+  function breakPin(p) { p.broken = true; p.flash = 0.3; }
+  function hitPin(c, p) {
+    if (p.cool > 0) return;
+    p.cool = 0.12; p.flash = 0.25; burst(p.x, p.y, 70);
+    if (p.type === 'bamboo') { snd(392, 0.05, 'square', 0.04); return; }
+    if (p.type === 'feng') {
+      if (c.fx.paper) { p.type = 'qing'; floatText(p.x, p.y - 30, '化解', '#bff', 28, 'B'); countHit(c, p); breakPin(p); return; }
+      B.cur.seal++; breakPin(p); floatText(p.x, p.y - 30, '封 -20%', '#c8a0ff', 30, 'B'); snd(150, 0.2, 'sawtooth', 0.08); return;
+    }
+    if (p.type === 'lei' && !p.lit) { p.lit = true; p.cool = 0.25; countHit(c, p); floatText(p.x, p.y - 30, '雷', '#c9a0ff', 30, 'T'); return; }
+    if (p.type === 'lei' && p.lit) {
+      breakPin(p); countHit(c, p); burst(p.x, p.y, 220); B.shake = 10; snd(110, 0.35, 'sawtooth', 0.1);
+      for (const q of B.pins) if (!q.broken && q !== p && BREAKABLE[q.type] && Math.hypot(q.x - p.x, q.y - p.y) < 90) { breakPin(q); countHit(c, q); }
+      return;
+    }
+    countHit(c, p);
+    if (c.fx.ink && !p.ink) { p.ink = true; p.cool = 0.25; return; }
+    if (c.fx.keep && rnd() < c.fx.keep) { p.cool = 0.25; return; }
+    breakPin(p);
+  }
+  function stepCoin(c, dt) {
+    c.life += dt; c.rot += dt * 6;
+    c.vy += GRAV * dt; c.x += c.vx * dt; c.y += c.vy * dt;
+    const sp = Math.hypot(c.vx, c.vy); if (sp > 1700) { c.vx *= 1700 / sp; c.vy *= 1700 / sp; }
+    if (c.x < c.r) { c.x = c.r; c.vx = Math.abs(c.vx) * 0.85; wallHit(c); }
+    if (c.x > W - c.r) { c.x = W - c.r; c.vx = -Math.abs(c.vx) * 0.85; wallHit(c); }
+    if (c.y < TOP - 40 && c.vy < 0) { c.vy = Math.abs(c.vy) * 0.6; }
+    for (const p of B.pins) {
+      if (p.broken) continue;
+      const dx = c.x - p.x, dy = c.y - p.y, rr = c.r + PIN_R, d2 = dx * dx + dy * dy;
+      if (d2 >= rr * rr) continue;
+      const d = Math.sqrt(d2) || 0.01, nx = dx / d, ny = dy / d;
+      c.x = p.x + nx * rr; c.y = p.y + ny * rr;
+      const vn = c.vx * nx + c.vy * ny;
+      if (vn < 0) {
+        c.vx -= (1 + c.e) * vn * nx; c.vy -= (1 + c.e) * vn * ny;
+        c.vx += (rnd() - 0.5) * 40;
+        if (Math.hypot(c.vx, c.vy) < 160) { c.vx += nx * 120 + (rnd() - 0.5) * 80; c.vy += ny * 120; }
+      }
+      hitPin(c, p);
+      if (c.fx.split && !c.split) {
+        c.split = true;
+        for (let k = 1; k < c.fx.split; k++) {
+          const a = (k % 2 ? 1 : -1) * (0.5 + 0.3 * Math.floor((k - 1) / 2));
+          const n = Object.assign({}, c, { vx: c.vx * Math.cos(a) - c.vy * Math.sin(a), vy: c.vx * Math.sin(a) + c.vy * Math.cos(a), units: 0, flat: 0, life: 0 });
+          B.coins.push(n);
+        }
+      }
+    }
+    // 卡住保护
+    if (Math.hypot(c.vx, c.vy) < 40) { c.still += dt; if (c.still > 0.6) { c.vx += (rnd() - 0.5) * 300; c.vy -= 120; c.still = 0; } } else c.still = 0;
+    // 葫芦口
+    const prevY = c.y - c.vy * dt;
+    if (!c.caught && c.vy > 0 && prevY < GY && c.y >= GY && Math.abs(c.x - B.gx) < gourdW() / 2) {
+      c.caught = true; c.done = true;
+      floatText(B.gx, GY - 60, '入葫芦', '#ffe28a', 40, 'T'); burst(B.gx, GY - 10, 160); snd(1047, 0.25, 'sine', 0.12);
+      if (c.fx.gourdHeal) healMe(c.fx.gourdHeal);
+      endCoin(c);
+    } else if (c.y > H - 60 || c.life > 14) {
+      if (B.wu.yuyun && !c.yuyun && rnd() < 0.3) { c.yuyun = true; c.x = LX; c.y = LY + 20; c.vx = (rnd() - 0.5) * 400; c.vy = 200; floatText(LX, LY + 60, '余韵', '#bff', 30, 'T'); return; }
+      c.done = true; endCoin(c);
+    }
+  }
+  function endCoin(c) {
+    if (c.fx.bomb) {
+      const ys = B.pins.filter(p => !p.broken).map(p => p.y); if (!ys.length) return;
+      const maxY = Math.max(...ys);
+      burst(c.x, Math.min(c.y, BOT), 260); B.shake = 10;
+      for (const p of B.pins) if (!p.broken && p.y > maxY - 40 && BREAKABLE[p.type]) { countHit(c, p); breakPin(p); }
+    }
+  }
+  function wallHit(c) { if (B.wu.jieli && B.cur) { countHit(c, null); } }
+
+  function yaoX() { return 360; }
+  function applyDamage(d) {
+    const y = B.yao; let rem = d;
+    if (y.shield > 0 && !(false)) {
+      const pm = fuVal('pojia') || 1, eff = rem * pm, ab = Math.min(y.shield, eff);
+      y.shield -= ab; rem = (eff - ab) / pm;
+      if (ab > 0) floatText(470, 330, '破盾 ' + Math.round(ab), '#9fd8ff', 34);
+    }
+    for (const m of y.minions) { const take = Math.min(m.hp, rem); m.hp -= take; rem -= take; if (take > 0) floatText(m.x, 380, '-' + Math.round(take), '#fff', 30); }
+    y.minions = y.minions.filter(m => m.hp > 0);
+    rem = Math.round(rem);
+    y.hp = Math.max(0, y.hp - rem); y.flash = 0.3; B.shake = Math.max(B.shake, 8);
+    floatText(yaoX(), 280, String(d), '#fff2b0', 70, 'N', 1.2);
+    snd(220, 0.2, 'square', 0.1);
+    if (y.phase === 0 && B.L.def.ai.length > 1 && y.hp > 0 && y.hp <= y.max / 2) { y.phase = 1; y.ai = 0; B.intent = curIntent(); floatText(360, 180, `${B.L.def.name} 换了招式`, '#ff8a6a', 34, 'T', 1.6); }
+  }
+  function hurtMe(d) {
+    d = Math.round(d);
+    if (B.me.shield > 0) { const ab = Math.min(B.me.shield, d); B.me.shield -= ab; d -= ab; }
+    B.me.hp = Math.max(0, B.me.hp - d); B.me.flash = 0.4; B.shake = Math.max(B.shake, 10);
+    floatText(110, 250, '-' + d, '#ff6a5a', 40);
+    snd(120, 0.25, 'sawtooth', 0.1);
+  }
+  function placeSeal(n) {
+    if (B.wu.pozhang) return;
+    const empty = shuffle(B.pins.filter(p => p.broken && BREAKABLE[p.type]));
+    const alive = shuffle(B.pins.filter(p => !p.broken && p.type === 'qing'));
+    const list = empty.concat(alive).slice(0, n);
+    list.forEach(p => { p.type = 'feng'; p.broken = false; p.lit = false; p.flash = 0.6; });
+  }
+  function enemyAct() {
+    const y = B.yao, it = B.intent, atk = B.L.atk;
+    if (y.skip) { y.skip = 0; floatText(360, 200, '被镇住了', '#bfe', 36, 'T'); }
+    else {
+      y.lunge = 0.35;
+      switch (it.t) {
+        case 'atk': case 'heavy': case 'yequ': hurtMe(atk * it.v); break;
+        case 'charge': floatText(360, 200, '蓄力', '#ffb070', 36, 'T'); break;
+        case 'shield': { const v = Math.round(y.max * it.v); y.shield += v; floatText(470, 330, '结界 +' + v, '#9fd8ff', 34); break; }
+        case 'seal': placeSeal(it.v); floatText(360, 640, `封钉 ${it.v}`, '#c8a0ff', 36, 'T'); break;
+        case 'summon': if (y.minions.length < 2) { const id = B.L.def.minion, mh = Math.round(y.max * D.MINION.hp); y.minions.push({ id, hp: mh, max: mh, x: y.minions.length ? 590 : 130 }); floatText(360, 200, '招小妖', '#ffb070', 36, 'T'); } break;
+        case 'heal': { const v = Math.round(y.max * it.v); y.hp = Math.min(y.max, y.hp + v); floatText(360, 280, '+' + v, '#7dff9a', 44); break; }
+        case 'swirl': {
+          const live = B.pins.filter(p => !p.broken), spots = shuffle(B.slots.slice());
+          live.forEach((p, i) => { if (spots[i]) { p.x = spots[i][0]; p.y = spots[i][1]; } });
+          B.pins.filter(p => p.broken).forEach((p, i) => { const s = spots[live.length + i]; if (s) { p.x = s[0]; p.y = s[1]; } });
+          calcLinks(); floatText(360, 960, '搅阵', '#c8a0ff', 54, 'T'); B.shake = 10; break;
+        }
+        case 'shengsun': {
+          let n = 0;
+          for (let tries = 0; tries < 300 && n < 6; tries++) {
+            const x = 60 + rnd() * 600, yy = 680 + rnd() * 600;
+            if (B.pins.some(p => !p.broken && Math.hypot(p.x - x, p.y - yy) < 52)) continue;
+            B.pins.push({ x, y: yy, type: 'bamboo', broken: false, cool: 0, flash: 0.6 }); n++;
+          }
+          calcLinks(); floatText(360, 960, '生笋', '#9fe070', 54, 'T'); break;
+        }
+        case 'shouxiang': { const take = Math.min(5, S.xiang + B.earned); if (B.earned >= take) B.earned -= take; else { S.xiang -= take - B.earned; B.earned = 0; } y.hp = Math.min(y.max, y.hp + 10); floatText(360, 200, `受香 香火-${take}`, '#ffd85e', 32, 'T'); break; }
+      }
+      if (it.seal) placeSeal(it.seal);
+      for (const m of y.minions) hurtMe(atk * D.MINION.atk);
+    }
+    y.ai++; B.intent = curIntent();
+  }
+
+  function openWu() {
+    const opts = shuffle(D.WU.filter(w => !B.wu[w.id])).slice(0, 3);
+    if (AUTO) { applyWu(opts[0]); return; }
+    modal = {
+      draw() {
+        ctx.fillStyle = 'rgba(5,0,20,0.72)'; ctx.fillRect(0, 0, W, H);
+        text('顿悟', 360, 470, 80, '#ffd85e', 'T', 'center', { stroke: '#5a1206', sw: 8 });
+        text('三选一，只在本关有效', 360, 540, 28, '#e8dcff', 'B');
+        opts.forEach((w, i) => {
+          const x = 130 + i * 230, y = 860;
+          spr('paper', x, y, 200, 390);
+          text(w.name, x, y - 120, w.name.length > 3 ? 30 : 36, '#7a1d08', 'T');
+          wrap(w.desc, x, y - 50, 128, 24, 36, '#4a2a10', 'B', 'center');
+          hit(x - 100, y - 195, 200, 390, () => { modal = null; applyWu(w); });
+        });
+      },
+    };
+  }
+  function applyWu(w) {
+    B.wu[w.id] = 1;
+    switch (w.id) {
+      case 'danxin': case 'dianshi': assignSpecial(); break;
+      case 'huichun': healMe(Math.round(B.me.max * 0.3)); break;
+      case 'pozhang': B.pins.forEach(p => { if (p.type === 'feng') { p.type = 'qing'; p.broken = true; } }); break;
+      case 'lianzhu': B.lianzhu = 3; break;
+      case 'leiyin': shuffle(B.pins.filter(p => !p.broken && p.type === 'qing')).slice(0, 3).forEach(p => { p.type = 'lei'; p.flash = 0.6; }); break;
+      case 'qingming': restoreBoard('符阵重画'); break;
+      case 'zhenya': B.yao.skip = 1; break;
+      case 'jinshen': B.me.shield += 15; break;
+    }
+    floatText(360, 900, w.name, '#ffd85e', 56, 'T', 1.4);
+  }
+
+  function endBattle(win) {
+    const L = B.L, first = win && !S.clears[L.key];
+    let xiang, dan = 0, stars = 0;
+    if (win) {
+      stars = 1 + (B.me.hp >= B.me.max / 2 ? 1 : 0) + (B.shots <= L.std ? 1 : 0);
+      xiang = Math.round(L.xiang * (first ? 1 : 0.4));
+      if (L.type !== 'n') { if (first) dan = L.type === 'b' ? 2 : 1; else if (rnd() < 0.3) dan = 1; }
+    } else xiang = Math.round(L.xiang * 0.3);
+    xiang = Math.round((xiang + B.earned) * (1 + fuVal('yucai') / 100));
+    const prevStars = S.stars[L.key] || 0;
+    S.xiang += xiang; S.dan += dan;
+    if (win) { S.clears[L.key] = 1; S.stars[L.key] = Math.max(prevStars, stars); }
+    if (!S.roles.shusheng && S.clears['2-6']) grantRole('shusheng');
+    refreshShop(); save();
+    const R = { win, stars, xiang, dan, shots: B.shots, time: B.time, fly: B.flyT / Math.max(1, B.shots), hpLeft: B.me.hp / B.me.max, key: L.key, first };
+    window.TQ.results.push(R);
+    go(Result); Result.R = R; Result.t = 0;
+    if (win && L.key === '1-6' && !S.guide[1]) { S.guide[1] = 1; S.pendGuide = 1; save(); }
+    else if (win && stars === 3 && !S.guide[3]) { S.guide[3] = 1; S.pendGuide = 3; save(); }
+  }
+
+  const Battle = {
+    down(x, y) { if (B.state === 'aim' && y > 480) { B.aiming = true; this.move(x, y); } },
+    move(x, y) { if (B.aiming) { B.aim = clamp(Math.atan2(x - LX, Math.max(30, y - LY)), -1.309, 1.309); } },
+    up() { if (B.aiming) { B.aiming = false; if (B.state === 'aim') fire(); return true; } return false; },
+    update(dt) {
+      B.t += dt; B.time += dt; B.st += dt;
+      // 葫芦
+      B.gx += B.gdir * gourdSpeed() * dt; const hw = gourdW() / 2 + 20;
+      if (B.gx > W - hw) { B.gx = W - hw; B.gdir = -1; } if (B.gx < hw) { B.gx = hw; B.gdir = 1; }
+      for (const p of B.pins) { if (p.cool > 0) p.cool -= dt; if (p.flash > 0) p.flash -= dt; }
+      B.shake *= Math.pow(0.02, dt); B.dmgPop = Math.max(0, B.dmgPop - dt * 4);
+      B.yao.flash = Math.max(0, B.yao.flash - dt); B.yao.lunge = Math.max(0, B.yao.lunge - dt); B.me.flash = Math.max(0, B.me.flash - dt);
+      if (B.state === 'aim') {
+        if (AUTO && B.st > 0.15) { B.aim = (rnd() - 0.5) * 2.2; fire(); }
+      } else if (B.state === 'fly') {
+        B.flyT = (B.flyT || 0) + dt;
+        const n = Math.max(4, Math.ceil(dt * 300)); for (let k = 0; k < n; k++) for (const c of B.coins) if (!c.done) stepCoin(c, dt / n);
+        B.showDmg = shotDamage(false);
+        if (B.coins.every(c => c.done)) { B.final = shotDamage(true); window.TQ.shotLog.push({ tpl: B.L.tpl, hits: B.cur.hits, dmg: B.final, crit: B.cur.crit, caught: B.coins.some(c => c.caught) }); B.state = 'tally'; B.st = 0; if (B.coins.some(c => c.caught)) B.dmgPop = 1; }
+      } else if (B.state === 'tally') {
+        B.showDmg = B.final;
+        if (B.st > 0.6) { B.orbs.push({ t: 0 }); B.state = 'strike'; B.st = 0; }
+      } else if (B.state === 'strike') {
+        if (B.st > 0.4) {
+          B.orbs = []; B.earned += B.cur.xiang;
+          applyDamage(B.final);
+          if (B.wu.yishang) hurtMe(2);
+          B.coins = [];
+          if (B.yao.hp <= 0) { B.state = 'win'; B.st = 0; return; }
+          if (B.me.hp <= 0) { B.state = 'lose'; B.st = 0; return; }
+          if (!B.wuDone && B.yao.hp <= B.yao.max / 2) { B.wuDone = 1; openWu(); }
+          B.state = 'enemy'; B.st = 0;
+        }
+      } else if (B.state === 'enemy') {
+        if (modal) { B.st = 0; return; }
+        if (B.st > 0.35 && !B.acted) { B.acted = true; enemyAct(); }
+        if (B.st > 0.9) {
+          B.acted = false;
+          if (B.me.hp <= 0) { B.state = 'lose'; B.st = 0; return; }
+          checkRedraw(); B.cur = null; B.state = 'aim'; B.st = 0;
+        }
+      } else if (B.state === 'win' || B.state === 'lose') {
+        if (B.st > 1.2) endBattle(B.state === 'win');
+      }
+    },
+    draw(dt) {
+      if (!modal || B.state === 'enemy') this.update(dt);
+      for (const f of B.floats) f.t += dt; B.floats = B.floats.filter(f => f.t < f.life);
+      for (const f of B.fx) f.t += dt; B.fx = B.fx.filter(f => f.t < f.life);
+      for (const o of B.orbs) o.t += dt;
+      ctx.save();
+      if (B.shake > 0.5) ctx.translate((rnd() - 0.5) * B.shake, (rnd() - 0.5) * B.shake);
+      img(B.L.ch.bg, 360, 785, 720, 1570);
+      drawYao(); drawBoard(); drawCoins(); drawGourd(); drawAim();
+      // 爆闪
+      ctx.globalCompositeOperation = 'lighter';
+      for (const f of B.fx) { const k = f.t / f.life, s = f.size * (0.5 + k); spr('burst', f.x, f.y, s, s * 0.92, (1 - k) * 0.9); }
+      for (const o of B.orbs) { const k = Math.min(1, o.t / 0.4), x = 360, y = lerp(960, 300, k * k); ctx.drawImage(glow('#ffd040'), x - 80, y - 80, 160, 160); }
+      ctx.globalCompositeOperation = 'source-over';
+      drawDmg();
+      for (const f of B.floats) { const k = f.t / f.life; text(f.s, f.x, f.y - k * 50, f.size * (k < 0.15 ? 0.7 + k * 2 : 1), f.color, f.f, 'center', { stroke: '#200818', sw: Math.max(4, f.size / 8), a: 1 - Math.max(0, k - 0.6) / 0.4 }); }
+      ctx.restore();
+      drawHUD();
+      if (B.banner) { B.banner.t -= dt; if (B.banner.t <= 0) B.banner = null; else { const a = Math.min(1, B.banner.t); ctx.globalAlpha = a; panel(40, 572, 640, 120, 'rgba(25,12,40,0.9)'); wrap(B.banner.text, 70, 610, 580, 28, 40, '#ffe7a8', 'B'); ctx.globalAlpha = 1; } }
+      if (!S.tut.aimed && B.state === 'aim') { const hx = 360 + Math.sin(T * 2) * 120; text('按住拖动瞄准，松手撒钱', 360, 1000, 34, '#fff', 'T', 'center', { stroke: '#200818', sw: 6 }); ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(hx, 1080, 26, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalAlpha = 1; }
+    },
+  };
+  function drawYao() {
+    const y = B.yao, def = B.L.def, size = B.L.type === 'b' ? 330 : B.L.type === 'e' ? 310 : 290;
+    const cy = 300 + Math.sin(B.t * 2.2) * 6 + (y.lunge > 0 ? Math.sin(y.lunge / 0.35 * Math.PI) * 30 : 0);
+    // 暖光
+    ctx.globalCompositeOperation = 'lighter'; ctx.drawImage(glow('#ff9a3a'), 360 - 260, 300 - 230, 520, 460); ctx.globalCompositeOperation = 'source-over';
+    if (B.state === 'win') { const k = Math.min(1, B.st / 1); img('yao_' + B.L.yao, 360, cy + k * 40, size * (1 - k * 0.3), size * (1 - k * 0.3), 1 - k); }
+    else img('yao_' + B.L.yao, 360, cy, size, size);
+    if (y.flash > 0) { ctx.globalCompositeOperation = 'lighter'; img('yao_' + B.L.yao, 360, cy, size, size, y.flash * 2); ctx.globalCompositeOperation = 'source-over'; }
+    for (const m of y.minions) { img('yao_' + m.id, m.x, 390, 150, 150); bar(m.x - 60, 462, 120, 14, m.hp / m.max, '#e05030'); }
+    // 血条
+    spr('hpbar', 360, 495, 440, 68);
+    ctx.fillStyle = '#2a0808'; ctx.fillRect(178, 484, 364, 22);
+    const g = ctx.createLinearGradient(0, 484, 0, 506); g.addColorStop(0, '#ff6a4a'); g.addColorStop(1, '#b01a10');
+    ctx.fillStyle = g; ctx.fillRect(178, 484, 364 * y.hp / y.max, 22);
+    if (y.shield > 0) { ctx.fillStyle = 'rgba(140,200,255,0.75)'; ctx.fillRect(178, 484, Math.min(364, 364 * y.shield / y.max), 8); }
+    text(`${Math.ceil(y.hp)}/${y.max}`, 360, 496, 22, '#fff', 'N', 'center', { stroke: '#300', sw: 4 });
+    text(def.name, 360, 455, 30, '#ffe7a8', 'T', 'center', { stroke: '#200818', sw: 5 });
+    if (y.shield > 0) { spr('i_shield', 575, 496, 52, 52); text(String(Math.round(y.shield)), 575, 498, 22, '#fff', 'N', 'center', { stroke: '#003', sw: 4 }); }
+    // 意图
+    const it = B.intent, inf = D.INTENT[it.t];
+    if (B.state !== 'win') {
+      const ix = 560, iy = 200;
+      ctx.beginPath(); ctx.arc(ix, iy, 46, 0, 7); ctx.fillStyle = 'rgba(30,8,20,0.7)'; ctx.fill();
+      spr(inf.icon, ix, iy, 84, inf.icon === 'gourd' || inf.icon === 'xiang' ? 84 : undefined);
+      let num = '';
+      if (it.t === 'atk' || it.t === 'heavy' || it.t === 'yequ') num = String(Math.round(B.L.atk * it.v));
+      else if (it.t === 'shield' || it.t === 'heal') num = String(Math.round(y.max * it.v));
+      else if (it.t === 'seal') num = String(it.v);
+      if (num) text(num, ix + 34, iy + 30, 36, '#fff', 'N', 'center', { stroke: '#300', sw: 6 });
+      text(inf.name + (it.seal ? ' 封钉' : ''), ix, iy + 66, 24, '#ffe7a8', 'B', 'center', { stroke: '#200818', sw: 4 });
+      if (inf.tip) text(inf.tip, ix, iy + 94, 20, '#ffcaa0', 'B', 'center', { stroke: '#200818', sw: 4 });
+      if (y.skip) text('镇住', ix, iy - 60, 26, '#bfe', 'T', 'center', { stroke: '#200818', sw: 4 });
+    }
+  }
+  function bar(x, y, w, h, k, color) {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; rrect(x, y, w, h, h / 2); ctx.fill();
+    ctx.fillStyle = color; rrect(x, y, Math.max(h, w * clamp(k, 0, 1)), h, h / 2); ctx.fill();
+  }
+  function drawBoard() {
+    // 阵纹线
+    ctx.lineWidth = 2;
+    for (const [a, b] of B.links) {
+      const live = !a.broken && !b.broken;
+      ctx.strokeStyle = live ? 'rgba(255,214,120,0.22)' : 'rgba(255,214,120,0.05)';
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    for (const p of B.pins) {
+      if (p.broken) { spr('pin_' + (p.type === 'bamboo' ? 'qing' : p.type), p.x, p.y, 40, 40, 0.13); continue; }
+      ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.beginPath(); ctx.ellipse(p.x + 4, p.y + 7, 21, 18, 0, 0, 7); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of B.pins) {
+      if (p.broken) continue;
+      const lit = p.lit ? 0.4 + 0.3 * Math.sin(B.t * 12) : 0;
+      const s = 78 + (p.flash > 0 ? 40 : 0) + lit * 60;
+      ctx.globalAlpha = 0.45 + (p.flash > 0 ? 0.4 : 0) + lit;
+      ctx.drawImage(glow(PIN_COLOR[p.type]), p.x - s / 2, p.y - s / 2, s, s);
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    for (const p of B.pins) {
+      if (p.broken) continue;
+      if (p.type === 'bamboo') {
+        const g = ctx.createLinearGradient(p.x - 16, 0, p.x + 16, 0); g.addColorStop(0, '#4a8a2a'); g.addColorStop(0.5, '#9adc5a'); g.addColorStop(1, '#3a6a20');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, PIN_R, 0, 7); ctx.fill(); ctx.strokeStyle = '#1e3a10'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x + 14, p.y); ctx.stroke();
+        continue;
+      }
+      spr('pin_' + p.type, p.x, p.y, 44, 44);
+      if (p.ink) { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(p.x + 9, p.y - 9, 7, 0, 7); ctx.fill(); }
+    }
+  }
+  function drawCoins() {
+    for (const c of B.coins) {
+      if (c.done) continue;
+      ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.rot);
+      const s = c.r * 2.8; const r = ATLAS['c_' + c.id];
+      if (r) ctx.drawImage(IMG.atlas, r[0], r[1], r[2], r[3], -s / 2, -s / 2, s, s);
+      ctx.restore();
+    }
+  }
+  function drawGourd() {
+    const gw = gourdW(), x = B.gx;
+    if (gourdHidden()) {
+      ctx.globalAlpha = 0.12 + 0.08 * Math.sin(B.t * 6); spr('gourd', x, GY + 68, gw * 1.15, gw * 1.15 * 237 / 180); ctx.globalAlpha = 1;
+      return;
+    }
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5; ctx.drawImage(glow('#ffc040'), x - gw, GY - 60, gw * 2, 120); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    spr('gourd', x, GY + 68, gw * 1.15, gw * 1.15 * 237 / 180);
+    ctx.strokeStyle = 'rgba(255,230,140,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
+    ctx.beginPath(); ctx.moveTo(x - gw / 2, GY); ctx.lineTo(x + gw / 2, GY); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function drawAim() {
+    // 钱匣与下一枚
+    spr('box', LX, LY - 10, 96, 111);
+        B.queue.slice(0, 3).forEach((k, i) => spr('c_' + k, 510 + i * 52, 528, i ? 40 : 48, i ? 40 : 48, i ? 0.75 : 1));
+    if (B.state !== 'aim') return;
+    // 预览：只算墙反弹的抛物线
+    const segs = B.wu.tianyan ? 6 : 3, maxLen = segs * 170;
+    let x = LX, y = LY + 10, vx = Math.sin(B.aim) * V0 * (D.COINS[B.queue[0]].fx?.speed || 1), vy = Math.cos(B.aim) * V0 * (D.COINS[B.queue[0]].fx?.speed || 1), len = 0, i = 0, firstPin = null;
+    ctx.fillStyle = 'rgba(255,240,190,0.85)';
+    const dt = 1 / 120;
+    while (len < maxLen && y < BOT) {
+      const nx = x + vx * dt, ny = y + vy * dt; vy += GRAV * dt;
+      len += Math.hypot(nx - x, ny - y); x = nx; y = ny;
+      if (x < 15) { x = 15; vx = -vx * 0.85; } if (x > W - 15) { x = W - 15; vx = -vx * 0.85; }
+      if (B.wu.tianyan && !firstPin) firstPin = B.pins.find(p => !p.broken && Math.hypot(p.x - x, p.y - y) < PIN_R + 15);
+      if (++i % 4 === 0) { ctx.globalAlpha = 1 - len / maxLen * 0.8; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); }
+      if (firstPin) break;
+    }
+    ctx.globalAlpha = 1;
+    if (firstPin) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(firstPin.x, firstPin.y, 28, 0, 7); ctx.stroke(); }
+  }
+  function drawDmg() {
+    if (!(B.state === 'fly' || B.state === 'tally') || !B.cur) return;
+    const v = B.showDmg; if (!v) return;
+    const crit = B.cur.crit, s = 84 + B.dmgPop * 30;
+    text(String(v), 360, 900, s, crit ? '#ff5a3a' : '#ffe28a', 'N', 'center', { stroke: '#2a0808', sw: 10, a: 0.92 });
+    text(`连撞 ${B.cur.hits}`, 360, 970, 30, '#fff', 'B', 'center', { stroke: '#2a0808', sw: 5, a: 0.9 });
+    if (B.state === 'tally' && B.coins.some(c => c.caught)) text(`入葫芦 ×${gourdMul()}`, 360, 1020, 34, '#ffd85e', 'T', 'center', { stroke: '#2a0808', sw: 6 });
+    if (B.cur.seal) text(`封印 ×${Math.pow(0.8, B.cur.seal).toFixed(2)}`, 360, 1060, 26, '#c8a0ff', 'B', 'center', { stroke: '#2a0808', sw: 5 });
+  }
+  function drawHUD() {
+    // 顶栏
+    spr('b_set', 56, 56, 76, 76); hit(15, 15, 90, 90, pauseMenu);
+    text(`${B.L.key} ${B.L.ch.name}`, 108, 58, 36, '#ffe7a8', 'T', 'left', { stroke: '#200818', sw: 6 });
+    // 角色
+    ctx.save(); ctx.beginPath(); ctx.arc(90, 190, 52, 0, 7); ctx.fillStyle = '#2a1030'; ctx.fill(); ctx.clip(); img('role_' + S.role, 90, 226, 150, 150); ctx.restore();
+    ctx.lineWidth = 4; ctx.strokeStyle = B.me.flash > 0 ? '#ff4a3a' : '#e8b54c'; ctx.beginPath(); ctx.arc(90, 190, 52, 0, 7); ctx.stroke();
+    bar(30, 252, 120, 18, B.me.hp / B.me.max, '#4ad06a');
+    text(`${B.me.hp}/${B.me.max}`, 90, 284, 24, '#fff', 'N', 'center', { stroke: '#200818', sw: 4 });
+    if (B.me.shield > 0) text('盾 ' + B.me.shield, 90, 312, 22, '#9fd8ff', 'B', 'center', { stroke: '#200818', sw: 4 });
+    // 底栏
+    const g = ctx.createLinearGradient(0, 1470, 0, H); g.addColorStop(0, 'rgba(15,5,25,0)'); g.addColorStop(1, 'rgba(15,5,25,0.8)');
+    ctx.fillStyle = g; ctx.fillRect(0, 1470, W, 100);
+    text(`第 ${B.shots + (B.state === 'aim' ? 1 : 0)} 发`, 24, 1530, 30, '#fff', 'B', 'left', { stroke: '#200818', sw: 5 });
+    text(`标准 ${B.L.std} 发`, 24, 1492, 22, B.shots < B.L.std ? '#ffe7a8' : '#aaa', 'B', 'left', { stroke: '#200818', sw: 4 });
+    const wus = Object.keys(B.wu).map(id => D.WU.find(w => w.id === id).name);
+    if (wus.length) text('顿悟 ' + wus.join(' '), 696, 1530, 24, '#ffd85e', 'B', 'right', { stroke: '#200818', sw: 4 });
+    if (B.lianzhu) text(`连珠 余 ${B.lianzhu}`, 696, 1492, 22, '#bff', 'B', 'right', { stroke: '#200818', sw: 4 });
+  }
+  function pauseMenu() {
+    modal = {
+      draw() {
+        ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, W, H);
+        panel(150, 560, 420, 420);
+        text('暂停', 360, 630, 52, '#ffd85e', 'T');
+        bigBtn(360, 740, 300, 96, '继续', () => { modal = null; }, { size: 38 });
+        bigBtn(360, 860, 300, 96, '放弃本关', () => { modal = null; B = null; go(Home); }, { size: 34 });
+        text(S.sound ? '声音 开' : '声音 关', 360, 945, 26, '#cdbfe8', 'B'); hit(260, 920, 200, 50, () => { S.sound = S.sound ? 0 : 1; save(); });
+      },
+    };
+  }
+
+  // ======================================================================
+  // 结算
+  // ======================================================================
+  const Result = {
+    R: null, t: 0,
+    draw(dt) {
+      const R = this.R; this.t += dt;
+      img(D.CHAPTERS[+R.key.split('-')[0] - 1].bg, 360, 785, 720, 1570);
+      ctx.fillStyle = 'rgba(10,4,24,0.7)'; ctx.fillRect(0, 0, W, H);
+      spr('scroll', 360, 780, 600, 880);
+      text(R.win ? '镇妖成功' : '败走', 360, 440, 72, R.win ? '#a01a08' : '#4a3a5a', 'T');
+      text(R.key + ' ' + D.CHAPTERS[+R.key.split('-')[0] - 1].name, 360, 515, 30, '#5a3a18', 'B');
+      for (let k = 0; k < 3; k++) {
+        const on = k < R.stars && this.t > 0.4 + k * 0.35, s = on ? 110 - Math.max(0, 0.4 + k * 0.35 + 0.2 - this.t) * 200 : 100;
+        spr(on ? 'star' : 'star_off', 240 + k * 120, 620, s, s);
+      }
+      const L = levelInfo(...R.key.split('-').map(Number));
+      const rows = [['通关', R.win], ['余血过半', R.stars >= 2 && R.win && (R.stars === 3 || !(R.shots <= L.std))], [`${L.std} 发内（用了 ${R.shots} 发）`, R.win && R.shots <= L.std]];
+      rows[1][1] = R.win && (R.stars - 1 - (R.shots <= L.std ? 1 : 0)) >= 1;
+      rows.forEach(([s, ok], i) => text((ok ? '★ ' : '☆ ') + s, 360, 720 + i * 46, 28, ok ? '#7a1d08' : '#8a7a6a', 'B'));
+      spr('xiang', 270, 900, 40, 52); text('+' + R.xiang, 300, 902, 38, '#7a3a08', 'N', 'left');
+      if (R.dan) { spr('dan', 450, 900, 50, 50); text('+' + R.dan, 480, 902, 38, '#a01a08', 'N', 'left'); }
+      text(R.win ? (R.first ? '首通' : '重打 四成香火') : '失败也有三成香火，回去整备再来', 360, 970, 24, '#6a4a28', 'B');
+      text('香火铺已刷新', 360, 1010, 22, '#6a4a28', 'B');
+      if (this.t > 0.8) bigBtn(360, 1110, 320, 100, '回道观', () => go(Home), { size: 40 });
+    },
+  };
+
+  // ======================================================================
+  // 钱袋
+  // ======================================================================
+  const RARITY_FR = ['fr_1', 'fr_2', 'fr_0', 'fr_3'];
+  const RARITY_COLOR = ['#7fe07f', '#c890ff', '#ff7a5a', '#ffd85e'];
+  function header(title) {
+    ctx.fillStyle = '#1c0e2e'; ctx.fillRect(0, 0, W, H);
+    img('bg_dg', 360, 785, 720, 1570, 0.25);
+    backBtn(() => go(Home));
+    text(title, 360, 62, 52, '#ffd85e', 'T', 'center', { stroke: '#5a1206', sw: 7 });
+    currencyBar(24, 150);
+  }
+  const Bag = {
+    sel: null,
+    enter() { this.sel = this.sel || 'tongqian'; },
+    draw() {
+      header('钱袋');
+      const n = bagSlots();
+      text(`携带 ${S.bag.length}/${n}   点袋中铜钱可取出`, 40, 230, 26, '#e8dcff', 'B', 'left');
+      for (let i = 0; i < n; i++) {
+        const x = 70 + i * 82, y = 300;
+        ctx.beginPath(); ctx.arc(x, y, 36, 0, 7); ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fill(); ctx.strokeStyle = '#8a6a3a'; ctx.lineWidth = 2; ctx.stroke();
+        if (S.bag[i]) { spr('c_' + S.bag[i], x, y, 66, 66); hit(x - 38, y - 38, 76, 76, () => { if (S.bag.length > 1) { S.bag.splice(i, 1); save(); } else toast('钱袋里至少留一枚'); }); }
+      }
+      const owned = Object.keys(D.COINS).filter(k => S.coins[k]);
+      text(`已得铜钱 ${owned.length}/${Object.keys(D.COINS).length}`, 40, 380, 26, '#e8dcff', 'B', 'left');
+      owned.forEach((k, i) => {
+        const x = 100 + (i % 4) * 173, y = 480 + Math.floor(i / 4) * 170, d = D.COINS[k];
+        spr(RARITY_FR[d.r], x, y, 140, 132);
+        spr('c_' + k, x, y - 6, 92, 92);
+        text(`Lv${S.coins[k].lv}`, x + 44, y + 44, 22, '#fff', 'N', 'center', { stroke: '#200818', sw: 4 });
+        text(d.name, x, y + 80, 24, this.sel === k ? '#ffd85e' : '#fff', 'T');
+        if (this.sel === k) { ctx.strokeStyle = '#ffd85e'; ctx.lineWidth = 4; rrect(x - 74, y - 72, 148, 172, 14); ctx.stroke(); }
+        hit(x - 74, y - 72, 148, 172, () => { this.sel = k; });
+      });
+      // 详情
+      const k = this.sel, d = D.COINS[k], o = S.coins[k];
+      if (!d || !o) return;
+      panel(30, 1150, 660, 390);
+      spr('c_' + k, 110, 1240, 110, 110);
+      text(d.name, 190, 1210, 40, '#ffd85e', 'T', 'left');
+      text(`${D.RARITY[d.r]}品  开光 Lv${o.lv}`, 190, 1260, 26, RARITY_COLOR[d.r], 'B', 'left');
+      const kg = D.KAIGUANG[o.lv - 1];
+      text(`普伤 ${+(d.n * kg).toFixed(1)}   暴伤 ${+(d.c * kg).toFixed(1)}`, 450, 1210, 26, '#fff', 'B', 'left');
+      wrap(d.desc, 60, 1320, 600, 26, 36, '#e8dcff', 'B');
+      const full = S.bag.length >= bagSlots();
+      chip(60, 1440, 250, 72, full ? '钱袋已满' : '放入钱袋', () => { S.bag.push(k); save(); }, { disabled: full });
+      if (o.lv < 5) {
+        const [cx, cd] = D.KG_COST[o.lv], mul = D.RARITY_MUL[d.r], cost = cx * mul, can = S.xiang >= cost && S.dan >= cd;
+        chip(340, 1440, 320, 72, `开光 香火${cost}${cd ? ' 妖丹' + cd : ''}`, () => { S.xiang -= cost; S.dan -= cd; o.lv++; save(); snd(1047, 0.3, 'sine', 0.12); toast(`${d.name} 开光至 Lv${o.lv}`); }, { disabled: !can, gold: can, size: 24 });
+      } else chip(340, 1440, 320, 72, '已满级', null, { disabled: true });
+    },
+  };
+
+  // ======================================================================
+  // 符箓
+  // ======================================================================
+  const Fu = {
+    sel: null,
+    draw() {
+      header('符箓');
+      const n = fuSlots(), next = D.FU_SLOTS.find(([s]) => s > totalStars());
+      text(`装备 ${S.equip.length}/${n}` + (next ? `   道行 ${next[0]} 星开第 ${next[1]} 槽` : ''), 40, 230, 26, '#e8dcff', 'B', 'left');
+      for (let i = 0; i < 6; i++) {
+        const x = 95 + i * 106, y = 330, open = i < n;
+        rrect(x - 44, y - 70, 88, 140, 10); ctx.fillStyle = open ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.2)'; ctx.fill(); ctx.strokeStyle = open ? '#8a6a3a' : '#3a2a3a'; ctx.lineWidth = 2; ctx.stroke();
+        if (!open) text('锁', x, y, 30, '#5a4a5a', 'T');
+        const id = S.equip[i];
+        if (id) { spr('f_' + id, x, y, 62, 130); hit(x - 44, y - 70, 88, 140, () => { S.equip.splice(i, 1); save(); }); }
+      }
+      const owned = Object.keys(D.FU).filter(k => S.fus[k]);
+      text(`已得符箓 ${owned.length}/${Object.keys(D.FU).length}`, 40, 440, 26, '#e8dcff', 'B', 'left');
+      if (!owned.length) wrap('还没有符箓。香火铺和章节宝箱里能得到。', 60, 520, 600, 28, 40, '#bfb0d8', 'B');
+      owned.forEach((k, i) => {
+        const x = 90 + (i % 5) * 136, y = 600 + Math.floor(i / 5) * 270;
+        spr('f_' + k, x, y, 100, 210, S.equip.includes(k) ? 0.5 : 1);
+        if (S.fus[k].up) text('升', x + 40, y - 90, 26, '#ff7a5a', 'T', 'center', { stroke: '#200818', sw: 4 });
+        if (S.equip.includes(k)) text('已装备', x, y, 24, '#fff', 'B', 'center', { stroke: '#200818', sw: 5 });
+        text(D.FU[k].name, x, y + 122, 24, this.sel === k ? '#ffd85e' : '#fff', 'T');
+        hit(x - 60, y - 110, 120, 250, () => { this.sel = k; });
+      });
+      const k = this.sel; if (!k || !S.fus[k]) return;
+      const d = D.FU[k], o = S.fus[k], eq = S.equip.includes(k);
+      panel(30, 1180, 660, 360);
+      text(d.name, 60, 1230, 40, '#ffd85e', 'T', 'left');
+      text(`${D.RARITY[d.r]}品${o.up ? '  已升阶' : ''}`, 300, 1232, 26, RARITY_COLOR[d.r], 'B', 'left');
+      wrap(d.desc(o.up ? d.u : d.v), 60, 1300, 600, 28, 38, '#e8dcff', 'B');
+      if (!o.up) text(`升阶后：${d.desc(d.u)}`, 60, 1360, 22, '#bfb0d8', 'B', 'left');
+      chip(60, 1440, 260, 72, eq ? '卸下' : (S.equip.length >= fuSlots() ? '槽位已满' : '装备'), () => { if (eq) S.equip.splice(S.equip.indexOf(k), 1); else S.equip.push(k); save(); }, { disabled: !eq && S.equip.length >= fuSlots() });
+      if (!o.up) chip(350, 1440, 300, 72, '升阶 妖丹3', () => { S.dan -= 3; o.up = 1; save(); toast(`${d.name} 已升阶`); }, { disabled: S.dan < 3, gold: S.dan >= 3 });
+    },
+  };
+
+  // ======================================================================
+  // 香火铺
+  // ======================================================================
+  const Shop = {
+    draw() {
+      header('香火铺');
+      text('每打完一关刷新一次', 360, 230, 26, '#e8dcff', 'B');
+      const items = S.shop.items;
+      if (!items.length) text('法器都已收齐，只剩妖丹可买', 360, 400, 28, '#bfb0d8', 'B');
+      items.forEach((it, i) => {
+        const x = 40 + (i % 2) * 330, y = 290 + Math.floor(i / 2) * 420, d = it.kind === 'coin' ? D.COINS[it.id] : D.FU[it.id];
+        panel(x, y, 310, 400, 'rgba(40,16,30,0.85)');
+        if (it.kind === 'coin') { spr(RARITY_FR[d.r], x + 155, y + 100, 150, 140); spr('c_' + it.id, x + 155, y + 96, 100, 100); }
+        else spr('f_' + it.id, x + 155, y + 100, 80, 168);
+        text(d.name, x + 155, y + 210, 34, '#ffd85e', 'T');
+        text(`${D.RARITY[d.r]}品${it.kind === 'coin' ? '铜钱' : '符箓'}`, x + 155, y + 250, 22, RARITY_COLOR[d.r], 'B');
+        wrap(it.kind === 'coin' ? `普${d.n} 暴${d.c} ${d.desc}` : d.desc(d.v), x + 20, y + 285, 270, 22, 30, '#e8dcff', 'B');
+        if (it.sold) text('已售', x + 155, y + 360, 30, '#8a7a9a', 'T');
+        else chip(x + 55, y + 330, 200, 56, `香火 ${it.price}`, () => {
+          S.xiang -= it.price; it.sold = true;
+          if (it.kind === 'coin') S.coins[it.id] = { lv: 1 }; else S.fus[it.id] = { up: 0 };
+          save(); snd(988, 0.25, 'sine', 0.12); toast(`得到「${d.name}」`);
+        }, { disabled: S.xiang < it.price, gold: S.xiang >= it.price });
+      });
+      const dn = S.shop.dan, y = 1150;
+      panel(40, y, 640, 160, 'rgba(40,16,30,0.85)');
+      spr('dan', 120, y + 80, 100, 100);
+      text('妖丹 ×1', 200, y + 55, 34, '#ffb3a0', 'T', 'left');
+      text('开光 Lv4 以上、符箓升阶要用', 200, y + 105, 22, '#e8dcff', 'B', 'left');
+      if (dn.sold) text('已售', 590, y + 80, 30, '#8a7a9a', 'T');
+      else chip(500, y + 50, 160, 60, `香火 ${dn.price}`, () => { S.xiang -= dn.price; S.dan++; dn.sold = true; save(); toast('得到妖丹 1'); }, { disabled: S.xiang < dn.price, gold: S.xiang >= dn.price, size: 24 });
+    },
+  };
+
+  // ======================================================================
+  // 镇妖簿
+  // ======================================================================
+  const Book = {
+    tab: 0, page: 0,
+    draw() {
+      header('镇妖簿');
+      ['妖怪', '法器', '关卡'].forEach((s, i) => chip(60 + i * 210, 210, 180, 64, s, () => { this.tab = i; this.page = 0; }, { gold: this.tab === i }));
+      if (this.tab === 0) {
+        const all = D.YAO_ALL, seen = all.filter(k => S.seen[k]).length;
+        text(`已镇 ${seen}/${all.length}`, 360, 310, 26, '#e8dcff', 'B');
+        this.grid(all, k => {
+          const ok = D.YAO[k] && S.seen[k];
+          return { name: ok ? D.YAO[k].name : '？？？', draw: (x, y) => ok ? img('yao_' + k, x, y, 130, 130) : text('？', x, y, 70, '#4a3a5a', 'T'), on: ok ? () => this.yaoDetail(k) : null };
+        });
+      } else if (this.tab === 1) {
+        const all = D.COINS_ALL.map(k => ['coin', k]).concat(D.FU_ALL.map(k => ['fu', k]));
+        const got = all.filter(([t, k]) => t === 'coin' ? S.coins[k] : S.fus[k]).length;
+        text(`法器 ${got}/${all.length}（铜钱 36 符箓 40）`, 360, 310, 26, '#e8dcff', 'B');
+        this.grid(all, ([t, k]) => {
+          const ok = t === 'coin' ? S.coins[k] : S.fus[k], d = t === 'coin' ? D.COINS[k] : D.FU[k];
+          return {
+            name: ok ? d.name : '？？？',
+            draw: (x, y) => ok ? (t === 'coin' ? spr('c_' + k, x, y, 100, 100) : spr('f_' + k, x, y, 56, 118)) : text('？', x, y, 70, '#4a3a5a', 'T'),
+            on: ok ? () => msgBox(d.name, t === 'coin' ? `${D.RARITY[d.r]}品铜钱\n普伤 ${d.n} 暴伤 ${d.c}\n${d.desc}` : `${D.RARITY[d.r]}品符箓\n${d.desc(d.v)}`) : null,
+          };
+        });
+      } else {
+        text(`道行 ${totalStars()} 星`, 360, 310, 26, '#e8dcff', 'B');
+        for (let c = 1; c <= 20; c++) {
+          const x = 70 + ((c - 1) % 2) * 320, y = 360 + Math.floor((c - 1) / 2) * 112, ch = D.CHAPTERS[c - 1];
+          panel(x, y, 300, 96, ch ? 'rgba(40,16,30,0.85)' : 'rgba(20,10,20,0.5)', ch ? '#d9a84a' : '#4a3a4a');
+          text(`第${CN[c]}章`, x + 20, y + 32, 26, ch ? '#ffd85e' : '#6a5a6a', 'T', 'left');
+          text(ch ? ch.name : '未开放', x + 20, y + 68, 24, ch ? '#fff' : '#6a5a6a', 'B', 'left');
+          if (ch) { const st = [1, 2, 3, 4, 5, 6].reduce((a, l) => a + (S.stars[c + '-' + l] || 0), 0); spr('star', x + 210, y + 48, 36, 36); text(`${st}/18`, x + 232, y + 50, 26, '#fff', 'N', 'left'); }
+        }
+      }
+    },
+    grid(all, fn) {
+      const per = 16, pages = Math.ceil(all.length / per); this.page = clamp(this.page, 0, pages - 1);
+      all.slice(this.page * per, this.page * per + per).forEach((it, i) => {
+        const x = 105 + (i % 4) * 170, y = 430 + Math.floor(i / 4) * 230, v = fn(it);
+        panel(x - 78, y - 85, 156, 210, 'rgba(40,16,30,0.75)', v.on ? '#d9a84a' : '#4a3a4a');
+        v.draw(x, y);
+        text(v.name, x, y + 95, 24, v.on ? '#ffe7a8' : '#6a5a6a', 'T');
+        if (v.on) hit(x - 78, y - 85, 156, 210, v.on);
+      });
+      text(`${this.page + 1}/${pages}`, 360, 1380, 30, '#fff', 'N');
+      if (this.page > 0) chip(60, 1350, 180, 64, '上一页', () => { this.page--; });
+      if (this.page < pages - 1) chip(480, 1350, 180, 64, '下一页', () => { this.page++; });
+    },
+    yaoDetail(k) {
+      const d = D.YAO[k];
+      modal = {
+        draw() {
+          ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+          spr('scroll', 360, 800, 600, 880);
+          img('yao_' + k, 360, 640, 340, 340);
+          text(d.name, 360, 850, 50, '#7a1d08', 'T');
+          text({ n: '普通', e: '精英', b: '大妖' }[d.type], 360, 905, 26, '#6a4a28', 'B');
+          wrap(d.note, 180, 970, 360, 30, 44, '#4a2a10', 'B');
+          bigBtn(360, 1110, 260, 90, '合上', () => { modal = null; }, { size: 34 });
+        },
+      };
+    },
+  };
+
+  // ======================================================================
+  // 角色
+  // ======================================================================
+  const Role = {
+    draw() {
+      header('角色');
+      D.ROLES.forEach((r, i) => {
+        const y = 220 + i * 260, own = S.roles[r.id], use = S.role === r.id;
+        panel(30, y, 660, 240, use ? 'rgba(80,24,20,0.9)' : 'rgba(40,16,30,0.85)', use ? '#ffd85e' : '#d9a84a');
+        if (IMG['role_' + r.id]) { ctx.save(); rrect(40, y + 10, 200, 220, 14); ctx.clip(); img('role_' + r.id, 140, y + 140, 240, 240, own ? 1 : 0.35); ctx.restore(); }
+        else text('？', 140, y + 120, 100, '#4a3a5a', 'T');
+        text(r.name, 270, y + 50, 40, '#ffd85e', 'T', 'left');
+        text(`血量 ${r.hp}`, 520, y + 52, 26, '#fff', 'B', 'left');
+        wrap(r.desc, 270, y + 105, 400, 24, 34, '#e8dcff', 'B');
+        if (r.start) text('起手：' + r.start.map(k => D.COINS[k].name).join(' '), 270, y + 160, 22, '#bfb0d8', 'B', 'left');
+        if (r.lock) text(r.lock, 270, y + 205, 24, '#8a7a9a', 'B', 'left');
+        else if (use) text('使用中', 600, y + 200, 28, '#ffd85e', 'T');
+        else if (own) chip(510, y + 172, 160, 56, '选用', () => { S.role = r.id; save(); });
+        else {
+          const can = S.xiang >= r.unlock.xiang;
+          text(`通关第${CN[r.unlock.ch]}章解锁`, 270, y + 205, 22, '#bfb0d8', 'B', 'left');
+          chip(480, y + 172, 190, 56, `香火 ${r.unlock.xiang}`, () => { S.xiang -= r.unlock.xiang; grantRole(r.id); save(); toast(`${r.name} 加入`); }, { disabled: !can, gold: can, size: 24 });
+        }
+      });
+    },
+  };
+
+  // ======================================================================
+  // 主循环
+  // ======================================================================
+  let last = performance.now(), loaded = false;
+  function frame(now) {
+    let dt = Math.min(0.05, (now - last) / 1000); last = now;
+    dt *= SPEED; T += dt;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#0e0820'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(DPR * SC, 0, 0, DPR * SC, DPR * OX, DPR * OY);
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+    HITS = [];
+    if (!loaded) { text('铜钱镇妖', 360, 700, 80, '#ffd85e', 'T'); text('载入中', 360, 800, 30, '#cdbfe8', 'B'); }
+    else {
+      if (AUTO && scene === Result && Result.t > 0.5) window.TQ.onResult && window.TQ.onResult();
+      if (AUTO && modal) modal = null;
+      scene.draw(dt);
+      if (modal) { HITS = []; modal.draw(dt); }
+      drawToast(dt);
+    }
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+  window.TQ = { results: [], shotLog: [], get S() { return S; }, get B() { return B; }, startBattle, go: n => go({ Home, MapS, Bag, Fu, Shop, Book, Role }[n]), save, reset() { S = defSave(); save(); }, scene: () => scene, modal: () => !!modal };
+  loadAll().then(() => { loaded = true; go(Home); });
+  requestAnimationFrame(frame);
+})();
+
+</script></body></html>

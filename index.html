@@ -19,11 +19,20 @@ const DATA = {
   BAG_SLOTS: [[1, 3], [2, 4], [5, 5], [9, 6], [13, 7], [17, 8]], // [解锁章, 槽数]
   FU_SLOTS: [[0, 1], [15, 2], [40, 3], [80, 4], [140, 5], [220, 6]], // [道行星数, 槽数]
 
+  // story：首次进本章时的开场（一句一行）；end：首通本章大妖后的收尾，引出下一章
   CHAPTERS: [
-    { id: 1, name: '荒山野径', bg: 'bg1', teach: '按住屏幕拖动瞄准，松手撒钱；撞到朱砂钉，整发暴击。' },
-    { id: 2, name: '乱葬岗', bg: 'bg2', teach: '铜钱落进葫芦，本发伤害乘 1.5；妖怪的护盾要先打掉。' },
-    { id: 3, name: '竹林小径', bg: 'bg3', teach: '黑色封印钉会削减本发伤害；搅阵会打乱符钉。' },
-    { id: 4, name: '山神破庙', bg: 'bg4', teach: '小妖会先替主子挨打；大妖半血后换招。' },
+    { id: 1, name: '荒山野径', bg: 'bg1', teach: '按住屏幕拖动瞄准，松手撒钱；撞到朱砂钉，整发暴击。',
+      story: ['师父走的那天，只留下一只钱匣和一句话：「钱是拿来镇妖的，不是拿来花的。」', '我饿了三天，才想明白他老人家的意思：没钱花，就只能去镇妖。', '山下有只狸子拦路收过路钱。巧了，我身上别的没有，钱有的是。'],
+      end: '狸大仙临跑前喊：「孔方大哥不会放过你的！」我翻了翻钱匣，师父压箱底那枚最老的钱，确实不见了。' },
+    { id: 2, name: '乱葬岗', bg: 'bg2', teach: '铜钱落进葫芦，本发伤害乘 1.5；妖怪的护盾要先打掉。',
+      story: ['乱葬岗夜夜有笛声，附近村子三个月没人敢起夜。', '村长凑了一筐香火请我去，临走又补一句：顺便把他二舅的坟扶正。', '我问二舅埋哪。他说，你去了听哪座坟哭得最响，就是。'],
+      end: '骨笛郎说，那支曲子是给一位「有钱的大哥」祝寿用的。妖怪也讲排场，这我是真没想到。' },
+    { id: 3, name: '竹林小径', bg: 'bg3', teach: '黑色封印钉会削减本发伤害；搅阵会打乱符钉。',
+      story: ['竹林里的竹子记仇，砍过一根，整片林子都知道。', '我没砍过。我只是上回路过，在里头方便了一下。', '……这事，竹林也知道。'],
+      end: '青竹娘临走提醒我：山神庙供桌上摆着一枚方孔老钱，比我的脸还大。' },
+    { id: 4, name: '山神破庙', bg: 'bg4', teach: '小妖会先替主子挨打；大妖半血后换招。',
+      story: ['山神庙早没了山神，香火倒是一天比一天旺。', '进门一看，泥塑的神像正在数供品，数到一半，冲我伸手：「香火钱。」', '这年头，神可以是假的，要钱从来是真的。'],
+      end: '供桌上只剩一个方形的印子，还带点余温。老钱刚走不久，往水边去了。' },
   ],
   // 每章 6 关：妖怪 id、阵型模板编号
   LEVELS: {
@@ -36,30 +45,31 @@ const DATA = {
   // 意图：t 类型；v 倍率（atk/heavy 乘 ATK；shield/heal 乘妖怪最大血量）
   // atk 扑击、charge 蓄力、heavy 重击、shield 结界、seal 封钉、summon 招小妖、heal 回血、swirl 搅阵
   // 专属：yequ 夜曲（本发葫芦隐身）、shengsun 生笋、shouxiang 受香
+  HIT_UNIT: 2, // 每撞一颗钉记几次撞击。v0.1 钉变稀，每发撞钉数约 11→5，用 2 补回伤害（随机机器人实测）
   MINION: { hp: 0.12, atk: 0.3 }, // 小妖：血量 = 主妖最大血量 × hp，每回合攻击 = ATK × atk
   YAO: {
-    lanluli: { name: '拦路狸', type: 'n', note: '拦路只为讨口吃的，给了也不让。', ai: [[{ t: 'atk', v: 1 }, { t: 'atk', v: 0.8 }, { t: 'shield', v: 0.08 }]] },
-    caoxie: { name: '草鞋妖', type: 'n', note: '旧草鞋成了精，走得比主人还远。', ai: [[{ t: 'atk', v: 1 }, { t: 'shield', v: 0.15 }, { t: 'atk', v: 1.1 }]] },
-    denglong: { name: '灯笼鬼', type: 'n', note: '照路三十年，没照见过回家的人。', ai: [[{ t: 'atk', v: 0.9 }, { t: 'atk', v: 0.9 }, { t: 'heal', v: 0.1 }]] },
-    zhiren: { name: '纸人', type: 'n', note: '扎得太像，自己也信了。', ai: [[{ t: 'seal', v: 3 }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
-    zhujie: { name: '竹节精', type: 'n', note: '一节一节地长，一节一节地记仇。', ai: [[{ t: 'shield', v: 0.15 }, { t: 'atk', v: 1.2 }, { t: 'atk', v: 0.9 }]] },
-    shanxiao: { name: '山魈崽', type: 'n', note: '还小，但已经学会了凶。', ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2.2 }]] },
-    laoshu: { name: '老树精', type: 'e', note: '树大招风，它招妖。', minion: 'zhujie', ai: [[{ t: 'shield', v: 0.12 }, { t: 'summon' }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
-    dujiao: { name: '独脚山魈', type: 'e', note: '一只脚，跳得比你两只脚快。', ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2 }, { t: 'swirl' }, { t: 'shield', v: 0.08 }]] },
+    lanluli: { name: '拦路狸', type: 'n', note: '拦路只为讨口吃的，给了也不让。', say: ['此路是我开，此树是我栽。要从此路过……留下吃的就行。', '又是你？上回撒的钱我还没捡完。'], lose: ['给了也不让，打了……那就让吧。'], ai: [[{ t: 'atk', v: 1 }, { t: 'atk', v: 0.8 }, { t: 'shield', v: 0.08 }]] },
+    caoxie: { name: '草鞋妖', type: 'n', note: '旧草鞋成了精，走得比主人还远。', say: ['我走过的路比你吃过的盐还多。不信你闻闻。', '我左脚那只跑了，我替它把你拦下。'], lose: ['鞋带……松了……'], ai: [[{ t: 'atk', v: 1 }, { t: 'shield', v: 0.15 }, { t: 'atk', v: 1.1 }]] },
+    denglong: { name: '灯笼鬼', type: 'n', note: '照路三十年，没照见过回家的人。', say: ['别过来，这点光是给回家的人留的。', '这么晚还在外面晃，家里人不催你？'], lose: ['灯油……也就够照到这儿了。'], ai: [[{ t: 'atk', v: 0.9 }, { t: 'atk', v: 0.9 }, { t: 'heal', v: 0.1 }]] },
+    zhiren: { name: '纸人', type: 'n', note: '扎得太像，自己也信了。', say: ['我照着活人扎的，五官端正，比你端正。', '你瞅啥？我是纸糊的，不是吓大的。'], lose: ['别烧我……算了，烧吧，烧了就能去那边了。'], ai: [[{ t: 'seal', v: 3 }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
+    zhujie: { name: '竹节精', type: 'n', note: '一节一节地长，一节一节地记仇。', say: ['你上回在林子里干的事，我一节一节都记着。', '节节高，揍你也是一节比一节狠。'], lose: ['这笔账……下一节再算……'], ai: [[{ t: 'shield', v: 0.15 }, { t: 'atk', v: 1.2 }, { t: 'atk', v: 0.9 }]] },
+    shanxiao: { name: '山魈崽', type: 'n', note: '还小，但已经学会了凶。', say: ['我爹说，见了道士先咬一口再说。', '别看我小，我凶起来连自己都怕。'], lose: ['我要告诉我爹！我爹是……一只脚那个！'], ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2.2 }]] },
+    laoshu: { name: '老树精', type: 'e', note: '树大招风，它招妖。', say: ['老夫在这站了五百年，头回见人往我跟前撒钱。'], lose: ['树倒了，猢狲倒是早就散了。'], minion: 'zhujie', ai: [[{ t: 'shield', v: 0.12 }, { t: 'summon' }, { t: 'atk', v: 1 }, { t: 'atk', v: 1 }]] },
+    dujiao: { name: '独脚山魈', type: 'e', note: '一只脚，跳得比你两只脚快。', say: ['打我儿子的就是你？一只脚，也够踹你。'], lose: ['一只脚……还是差了点……'], ai: [[{ t: 'atk', v: 0.8 }, { t: 'charge' }, { t: 'heavy', v: 2 }, { t: 'swirl' }, { t: 'shield', v: 0.08 }]] },
     lidaxian: {
-      name: '狸大仙', type: 'b', note: '自封的大仙，供品要自己去偷。',
+      name: '狸大仙', type: 'b', note: '自封的大仙，供品要自己去偷。', say: ['本大仙正经受过供的！虽然是我自己摆的。'], lose: ['孔方大哥不会放过你的！'], p2: '你逼我的！大仙也是会贴符的！',
       ai: [[{ t: 'atk', v: 0.8 }, { t: 'seal', v: 2 }, { t: 'atk', v: 0.7 }, { t: 'seal', v: 1 }], [{ t: 'atk', v: 0.8, seal: 1 }, { t: 'seal', v: 1 }, { t: 'atk', v: 0.6, seal: 1 }]],
     },
     gudi: {
-      name: '骨笛郎', type: 'b', note: '笛子是腿骨做的，曲子是哭声学的。',
+      name: '骨笛郎', type: 'b', note: '笛子是腿骨做的，曲子是哭声学的。', say: ['来都来了，听一曲再走。走不走得了另说。'], lose: ['曲子……还没给大哥贺完寿……'], p2: '这段是高潮。葫芦就别找了，听曲。',
       ai: [[{ t: 'atk', v: 0.8 }, { t: 'shield', v: 0.06 }, { t: 'yequ', v: 0.6 }, { t: 'atk', v: 0.6 }], [{ t: 'yequ', v: 0.6 }, { t: 'shield', v: 0.05 }, { t: 'charge' }, { t: 'heavy', v: 1.5 }, { t: 'yequ', v: 0.6 }]],
     },
     qingzhu: {
-      name: '青竹娘', type: 'b', note: '竹林里的事，她都知道。',
+      name: '青竹娘', type: 'b', note: '竹林里的事，她都知道。', say: ['那件事，林子里谁都知道了。'], lose: ['行，你走吧。下回走远点再方便。'], p2: '笋子都给我长！长到他脚底下去！',
       ai: [[{ t: 'atk', v: 0.9 }, { t: 'shengsun' }, { t: 'seal', v: 2 }], [{ t: 'shengsun' }, { t: 'swirl' }, { t: 'atk', v: 1.2 }, { t: 'seal', v: 2 }]],
     },
     nisu: {
-      name: '泥塑假神', type: 'b', note: '有人上香，就有人当神。', minion: 'lanluli',
+      name: '泥塑假神', type: 'b', note: '有人上香，就有人当神。', say: ['跪下，上香。香火钱放供桌上，不找零。'], lose: ['我本来就是泥做的，你打我，你手不疼吗……'], p2: '来人，护驾！……说你呢，拦路的！', minion: 'lanluli',
       ai: [[{ t: 'shouxiang' }, { t: 'atk', v: 1 }, { t: 'shield', v: 0.05 }], [{ t: 'summon' }, { t: 'shouxiang' }, { t: 'atk', v: 1 }, { t: 'shield', v: 0.04 }, { t: 'atk', v: 0.8 }]],
     },
   },
@@ -126,7 +136,7 @@ const DATA = {
     { id: 'huichun', name: '回春', desc: '立即回复三成血' },
     { id: 'pozhang', name: '破障', desc: '封印钉全碎，本关不再出现' },
     { id: 'lianzhu', name: '连珠', desc: '下 3 发每发多射 1 枚铜钱（伤害减半）' },
-    { id: 'tianyan', name: '天眼', desc: '瞄准线延长，并标出第 1 颗钉' },
+    { id: 'tianyan', name: '天眼', desc: '瞄准线多算一次反弹，标出第 2 颗钉' },
     { id: 'leiyin', name: '雷引', desc: '3 颗青符钉变雷符钉' },
     { id: 'qingming', name: '清明', desc: '符阵立即重画，剩一半就重画' },
     { id: 'jishao', name: '积少成多', desc: '本发每撞 10 钉，伤害加 15%' },
@@ -382,6 +392,37 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     };
   }
 
+  function storyCard(title, lines, btn, fn) {
+    let t = 0;
+    const step = 1.1, all = () => t >= lines.length * step;
+    modal = {
+      draw(dt) {
+        t += dt || 0;
+        ctx.fillStyle = 'rgba(6,2,16,0.82)'; ctx.fillRect(0, 0, W, H);
+        spr('scroll', 360, 780, 620, 900);
+        text(title, 360, 470, 54, '#7a1d08', 'T');
+        let y = 570;
+        lines.forEach((l, i) => {
+          const a = clamp((t - i * step) / 0.5, 0, 1); if (a <= 0) return;
+          ctx.globalAlpha = a; y = wrap(l, 360 - 210, y, 420, 30, 46, '#4a2a10', 'B') + 18; ctx.globalAlpha = 1;
+        });
+        if (all()) bigBtn(360, 1130, 300, 96, btn, () => { modal = null; fn && fn(); }, { size: 36 });
+        else hit(0, 0, W, H, () => { t = lines.length * step; });
+      },
+    };
+  }
+  function yaoSay(s, t = 2.8) { if (B && s) B.say = { text: s, t }; }
+  function drawSay() {
+    if (!B.say) return;
+    const a = Math.min(1, B.say.t * 2);
+    // 放在头像（右缘 142）和意图图标（左缘 514）之间，不挡这两样
+    ctx.font = font(26, 'B'); const tw = ctx.measureText(B.say.text).width, w = Math.min(360, tw + 44), lines = Math.ceil(tw / (360 - 44));
+    const h = 26 + lines * 34, x = 330 - w / 2, y = 108;
+    ctx.globalAlpha = a; panel(x, y, w, h, 'rgba(255,246,222,0.95)', '#7a1d08');
+    ctx.fillStyle = 'rgba(255,246,222,0.95)'; ctx.beginPath(); ctx.moveTo(320, y + h - 2); ctx.lineTo(356, y + h - 2); ctx.lineTo(350, y + h + 20); ctx.closePath(); ctx.fill();
+    wrap(B.say.text, x + 22, y + 30, w - 44, 26, 34, '#4a1a08', 'B'); ctx.globalAlpha = 1;
+  }
+
   // ======================================================================
   // 道观（主界面）
   // ======================================================================
@@ -509,33 +550,34 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
       for (let y = y0, r = 0; y <= y1; y += dy, r++) for (let x = (r % 2 ? 40 + dx / 2 : 40) + 20; x <= 680; x += dx) if (!mask || mask(x, y)) add(x, y);
     };
     const cx = 360, cy = 960;
+    // v0.1：钉距约 100（原 55–80），每阵 35–45 颗。钉之间留出铜钱能穿过的缝，瞄哪里才有区别
     switch (tpl) {
-      case 0: stag(650, 1290, 80, 80); break; // 方格
-      case 1: stag(640, 1300, 68, 64, (x, y) => { const d = Math.abs(x - cx) / 340 + Math.abs(y - cy) / 360; return d < 0.55 || d > 0.7; }); break; // 菱格
-      case 2: add(cx, cy); for (const r of [72, 142, 212, 282, 352]) { const n = Math.round(2 * Math.PI * r / 62); for (let i = 0; i < n; i++) add(cx + r * Math.cos(i / n * 6.283 + r), cy + r * Math.sin(i / n * 6.283 + r)); } break; // 同心圆
+      case 0: stag(660, 1290, 110, 100); break; // 方格
+      case 1: stag(650, 1300, 100, 92, (x, y) => { const d = Math.abs(x - cx) / 340 + Math.abs(y - cy) / 360; return d < 0.5 || d > 0.78; }); break; // 菱格
+      case 2: add(cx, cy); for (const r of [110, 220, 330]) { const n = Math.round(2 * Math.PI * r / 105); for (let i = 0; i < n; i++) add(cx + r * Math.cos(i / n * 6.283 + r), cy + r * Math.sin(i / n * 6.283 + r)); } break; // 同心圆
       case 3: { // 八卦
-        for (let i = 0; i < 8; i++) add(cx + 80 * Math.cos(i * 0.785), cy + 80 * Math.sin(i * 0.785));
-        for (let i = 0; i < 8; i++) { const a = i * 0.785 + 0.39, ux = Math.cos(a), uy = Math.sin(a); for (const d of [160, 220, 280, 340]) for (const s of [-56, 0, 56]) add(cx + ux * d - uy * s, cy + uy * d + ux * s); }
+        for (let i = 0; i < 8; i++) add(cx + 95 * Math.cos(i * 0.785), cy + 95 * Math.sin(i * 0.785));
+        for (let i = 0; i < 8; i++) { const a = i * 0.785 + 0.39, ux = Math.cos(a), uy = Math.sin(a); add(cx + ux * 200, cy + uy * 200); for (const s of [-52, 52]) add(cx + ux * 300 - uy * s, cy + uy * 300 + ux * s); add(cx + ux * 395, cy + uy * 395); }
         break;
       }
-      case 4: stag(640, 1300, 72, 68, (x, y) => Math.hypot(x - cx, y - 790) < 170 || Math.hypot(x - cx, (y - 1110) * 1.1) < 240 || x < 110 || x > 610); break; // 葫芦形
-      case 5: for (let k = 0; k < 10; k++) { const dir = k % 2 ? 1 : -1; for (let i = 0; i < 11; i++) add(62 + i * 60 + (k % 2) * 30, 660 + k * 66 + dir * (i - 5) * 10); } break; // 斜坡
+      case 4: stag(650, 1300, 100, 90, (x, y) => Math.hypot(x - cx, y - 790) < 175 || Math.hypot(x - cx, (y - 1110) * 1.1) < 250 || x < 110 || x > 610); break; // 葫芦形
+      case 5: for (let k = 0; k < 7; k++) { const dir = k % 2 ? 1 : -1; for (let i = 0; i < 6; i++) add(60 + i * 112 + (k % 2) * 56, 665 + k * 105 + dir * (i - 2.5) * 8); } break; // 斜坡
       case 6: // 漏斗
-        for (let i = 0; i < 7; i++) { add(70 + i * 38, 650 + i * 52); add(650 - i * 38, 650 + i * 52); }
-        stag(690, 960, 70, 64, (x, y) => Math.abs(x - cx) < (y - 600) * 0.5); stag(1010, 1300, 68, 62); break;
-      case 7: stag(640, 1300, 70, 64, (x, y) => Math.abs(x - 190) < 120 || Math.abs(x - 530) < 120 || y > 1060 || (y > 760 && y < 860)); break; // 双塔
-      case 8: for (let r = 0; r < 9; r++) for (let x = 60 + (r % 2) * 36; x <= 670; x += 72) add(x, 650 + r * 78 + 26 * Math.sin(x / 90 + r)); break; // 波浪
+        for (let i = 0; i < 5; i++) { add(70 + i * 56, 650 + i * 76); add(650 - i * 56, 650 + i * 76); }
+        stag(700, 980, 96, 88, (x, y) => Math.abs(x - cx) < (y - 600) * 0.55); stag(1030, 1300, 100, 90); break;
+      case 7: stag(650, 1300, 100, 90, (x, y) => Math.abs(x - 190) < 120 || Math.abs(x - 530) < 120 || y > 1080 || (y > 760 && y < 860)); break; // 双塔
+      case 8: for (let r = 0; r < 7; r++) for (let x = 60 + (r % 2) * 52; x <= 670; x += 104) add(x, 670 + r * 100 + 26 * Math.sin(x / 90 + r)); break; // 波浪
       case 9: { // 星形
         const pts = []; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, R = i % 2 ? 140 : 330; pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]); }
-        for (let i = 0; i < 10; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % 10], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 62)); for (let k = 0; k < n; k++) add(lerp(x0, x1, k / n), lerp(y0, y1, k / n)); }
+        for (let i = 0; i < 10; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % 10], n = Math.max(1, Math.round(Math.hypot(x1 - x0, y1 - y0) / 88)); for (let k = 0; k < n; k++) add(lerp(x0, x1, k / n), lerp(y0, y1, k / n)); }
         const inStar = (x, y) => { let c = false; for (let i = 0, j = 9; i < 10; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
-        stag(650, 1300, 70, 66, (x, y) => inStar(x, y) || Math.hypot(x - cx, y - cy) > 300); break;
+        stag(650, 1300, 92, 88, (x, y) => inStar(x, y) || Math.hypot(x - cx, y - cy) > 320); break;
       }
     }
     const out = [];
     for (const [x, y] of P) {
       if (x < 42 || x > 678 || y < 625 || y > 1310) continue;
-      if (out.some(p => Math.hypot(p[0] - x, p[1] - y) < 48)) continue;
+      if (out.some(p => Math.hypot(p[0] - x, p[1] - y) < 82)) continue;
       out.push([x, y]);
     }
     return out;
@@ -543,7 +585,7 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
 
   let B = null;
   function startBattle(c, l) {
-    const L = levelInfo(c, l);
+    const L = levelInfo(c, l), met = !!S.seen[L.yao];
     S.seen[L.yao] = 1; save();
     const hp = maxHP();
     B = {
@@ -559,7 +601,12 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     refillQueue();
     calcLinks();
     go(Battle);
-    if (!S.tut['ch' + c]) { S.tut['ch' + c] = 1; save(); B.banner = { text: L.ch.teach, t: 4 }; }
+    const open = () => {
+      if (!S.tut['ch' + c]) { S.tut['ch' + c] = 1; save(); B.banner = { text: L.ch.teach, t: 4 }; }
+      if (L.def.say) yaoSay(met ? pick(L.def.say) : L.def.say[0]);
+    };
+    if (!S.tut['story' + c] && L.ch.story) { S.tut['story' + c] = 1; save(); storyCard(`第${CN[c]}章 ${L.ch.name}`, L.ch.story, '出发', open); if (AUTO) open(); }
+    else open();
   }
   function curIntent() { const ai = B.L.def.ai[B.yao.phase] || B.L.def.ai[0]; return ai[B.yao.ai % ai.length]; }
   function assignSpecial() {
@@ -638,7 +685,7 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
   }
   function countHit(c, p) {
     const sh = B.cur;
-    sh.hits++; c.units += c.mul;
+    sh.hits++; c.units += c.mul * D.HIT_UNIT;
     if (!sh.first) { sh.first = true; if (S.role === 'daoshi') sh.flat += 3; }
     if (c.fx.late && sh.hits >= 10) c.flat += c.fx.late * c.mul;
     if (p) {
@@ -710,7 +757,9 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     const prevY = c.y - c.vy * dt;
     if (!c.caught && c.vy > 0 && prevY < GY && c.y >= GY && Math.abs(c.x - B.gx) < gourdW() / 2) {
       c.caught = true; c.done = true;
-      floatText(B.gx, GY - 60, '入葫芦', '#ffe28a', 40, 'T'); burst(B.gx, GY - 10, 160); snd(1047, 0.25, 'sine', 0.12);
+      floatText(B.gx, GY - 70, '入葫芦', '#ffe28a', 44, 'T'); burst(B.gx, GY - 10, 220); snd(1047, 0.25, 'sine', 0.12); snd(1568, 0.35, 'sine', 0.1);
+      floatText(470, 880, '×' + gourdMul(), '#ffd85e', 72, 'N', 1.3);
+      B.gCatch = 1; B.beam = { x: B.gx, t: 0 }; B.dmgPop = 1.6; B.shake = Math.max(B.shake, 6);
       if (c.fx.gourdHeal) healMe(c.fx.gourdHeal);
       endCoin(c);
     } else if (c.y > H - 60 || c.life > 14) {
@@ -742,7 +791,7 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     y.hp = Math.max(0, y.hp - rem); y.flash = 0.3; B.shake = Math.max(B.shake, 8);
     floatText(yaoX(), 280, String(d), '#fff2b0', 70, 'N', 1.2);
     snd(220, 0.2, 'square', 0.1);
-    if (y.phase === 0 && B.L.def.ai.length > 1 && y.hp > 0 && y.hp <= y.max / 2) { y.phase = 1; y.ai = 0; B.intent = curIntent(); floatText(360, 180, `${B.L.def.name} 换了招式`, '#ff8a6a', 34, 'T', 1.6); }
+    if (y.phase === 0 && B.L.def.ai.length > 1 && y.hp > 0 && y.hp <= y.max / 2) { y.phase = 1; y.ai = 0; B.intent = curIntent(); floatText(360, 180, `${B.L.def.name} 换了招式`, '#ff8a6a', 34, 'T', 1.6); if (B.L.def.p2) yaoSay(B.L.def.p2); }
   }
   function hurtMe(d) {
     d = Math.round(d);
@@ -843,12 +892,13 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     const R = { win, stars, xiang, dan, shots: B.shots, time: B.time, fly: B.flyT / Math.max(1, B.shots), hpLeft: B.me.hp / B.me.max, key: L.key, first };
     window.TQ.results.push(R);
     go(Result); Result.R = R; Result.t = 0;
+    if (win && first && L.type === 'b' && L.ch.end && !AUTO) storyCard(`第${CN[L.ch.id]}章 ${L.ch.name} 完`, [L.ch.end], '收下', null);
     if (win && L.key === '1-6' && !S.guide[1]) { S.guide[1] = 1; S.pendGuide = 1; save(); }
     else if (win && stars === 3 && !S.guide[3]) { S.guide[3] = 1; S.pendGuide = 3; save(); }
   }
 
   const Battle = {
-    down(x, y) { if (B.state === 'aim' && y > 480) { B.aiming = true; this.move(x, y); } },
+    down(x, y) { if (B.state === 'aim' && y > 480) { B.aiming = true; B.banner = null; this.move(x, y); } },
     move(x, y) { if (B.aiming) { B.aim = clamp(Math.atan2(x - LX, Math.max(30, y - LY)), -1.309, 1.309); } },
     up() { if (B.aiming) { B.aiming = false; if (B.state === 'aim') fire(); return true; } return false; },
     update(dt) {
@@ -857,25 +907,27 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
       B.gx += B.gdir * gourdSpeed() * dt; const hw = gourdW() / 2 + 20;
       if (B.gx > W - hw) { B.gx = W - hw; B.gdir = -1; } if (B.gx < hw) { B.gx = hw; B.gdir = 1; }
       for (const p of B.pins) { if (p.cool > 0) p.cool -= dt; if (p.flash > 0) p.flash -= dt; }
-      B.shake *= Math.pow(0.02, dt); B.dmgPop = Math.max(0, B.dmgPop - dt * 4);
+      B.shake *= Math.pow(0.02, dt); B.dmgPop = Math.max(0, B.dmgPop - dt * 4); B.gCatch = Math.max(0, (B.gCatch || 0) - dt * 1.5);
+      if (B.beam) { B.beam.t += dt; if (B.beam.t > 0.45) B.beam = null; }
+      if (B.say) { B.say.t -= dt; if (B.say.t <= 0) B.say = null; }
       B.yao.flash = Math.max(0, B.yao.flash - dt); B.yao.lunge = Math.max(0, B.yao.lunge - dt); B.me.flash = Math.max(0, B.me.flash - dt);
       if (B.state === 'aim') {
         if (AUTO && B.st > 0.15) { B.aim = (rnd() - 0.5) * 2.2; fire(); }
       } else if (B.state === 'fly') {
         B.flyT = (B.flyT || 0) + dt;
         const n = Math.max(4, Math.ceil(dt * 300)); for (let k = 0; k < n; k++) for (const c of B.coins) if (!c.done) stepCoin(c, dt / n);
-        B.showDmg = shotDamage(false);
+        B.showDmg = shotDamage(true);
         if (B.coins.every(c => c.done)) { B.final = shotDamage(true); window.TQ.shotLog.push({ tpl: B.L.tpl, hits: B.cur.hits, dmg: B.final, crit: B.cur.crit, caught: B.coins.some(c => c.caught) }); B.state = 'tally'; B.st = 0; if (B.coins.some(c => c.caught)) B.dmgPop = 1; }
       } else if (B.state === 'tally') {
         B.showDmg = B.final;
-        if (B.st > 0.6) { B.orbs.push({ t: 0 }); B.state = 'strike'; B.st = 0; }
+        if (B.st > (B.coins.some(c => c.caught) ? 1.0 : 0.6)) { B.orbs.push({ t: 0 }); B.state = 'strike'; B.st = 0; }
       } else if (B.state === 'strike') {
         if (B.st > 0.4) {
           B.orbs = []; B.earned += B.cur.xiang;
           applyDamage(B.final);
           if (B.wu.yishang) hurtMe(2);
           B.coins = [];
-          if (B.yao.hp <= 0) { B.state = 'win'; B.st = 0; return; }
+          if (B.yao.hp <= 0) { B.state = 'win'; B.st = 0; if (B.L.def.lose) yaoSay(pick(B.L.def.lose), 2.4); return; }
           if (B.me.hp <= 0) { B.state = 'lose'; B.st = 0; return; }
           if (!B.wuDone && B.yao.hp <= B.yao.max / 2) { B.wuDone = 1; openWu(); }
           B.state = 'enemy'; B.st = 0;
@@ -889,7 +941,7 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
           checkRedraw(); B.cur = null; B.state = 'aim'; B.st = 0;
         }
       } else if (B.state === 'win' || B.state === 'lose') {
-        if (B.st > 1.2) endBattle(B.state === 'win');
+        if (B.st > (B.state === 'win' && B.say ? 2.2 : 1.2)) endBattle(B.state === 'win');
       }
     },
     draw(dt) {
@@ -909,7 +961,7 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
       drawDmg();
       for (const f of B.floats) { const k = f.t / f.life; text(f.s, f.x, f.y - k * 50, f.size * (k < 0.15 ? 0.7 + k * 2 : 1), f.color, f.f, 'center', { stroke: '#200818', sw: Math.max(4, f.size / 8), a: 1 - Math.max(0, k - 0.6) / 0.4 }); }
       ctx.restore();
-      drawHUD();
+      drawHUD(); drawSay();
       if (B.banner) { B.banner.t -= dt; if (B.banner.t <= 0) B.banner = null; else { const a = Math.min(1, B.banner.t); ctx.globalAlpha = a; panel(40, 572, 640, 120, 'rgba(25,12,40,0.9)'); wrap(B.banner.text, 70, 610, 580, 28, 40, '#ffe7a8', 'B'); ctx.globalAlpha = 1; } }
       if (!S.tut.aimed && B.state === 'aim') { const hx = 360 + Math.sin(T * 2) * 120; text('按住拖动瞄准，松手撒钱', 360, 1000, 34, '#fff', 'T', 'center', { stroke: '#200818', sw: 6 }); ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.arc(hx, 1080, 26, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.globalAlpha = 1; }
     },
@@ -981,7 +1033,9 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
         ctx.beginPath(); ctx.moveTo(p.x - 14, p.y); ctx.lineTo(p.x + 14, p.y); ctx.stroke();
         continue;
       }
-      spr('pin_' + p.type, p.x, p.y, 44, 44);
+      const big = p.type === 'zhu' || p.type === 'jin';
+      if (big) { ctx.strokeStyle = p.type === 'zhu' ? 'rgba(255,90,50,0.85)' : 'rgba(255,215,80,0.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(p.x, p.y, 31 + 3 * Math.sin(B.t * 5 + p.x), 0, 7); ctx.stroke(); }
+      spr('pin_' + p.type, p.x, p.y, big ? 54 : 44, big ? 54 : 44);
       if (p.ink) { ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(p.x + 9, p.y - 9, 7, 0, 7); ctx.fill(); }
     }
   }
@@ -1000,8 +1054,11 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
       ctx.globalAlpha = 0.12 + 0.08 * Math.sin(B.t * 6); spr('gourd', x, GY + 68, gw * 1.15, gw * 1.15 * 237 / 180); ctx.globalAlpha = 1;
       return;
     }
-    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5; ctx.drawImage(glow('#ffc040'), x - gw, GY - 60, gw * 2, 120); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-    spr('gourd', x, GY + 68, gw * 1.15, gw * 1.15 * 237 / 180);
+    const gc = B.gCatch || 0;
+    ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 + gc * 0.5; ctx.drawImage(glow('#ffc040'), x - gw * (1 + gc), GY - 60 - gc * 60, gw * 2 * (1 + gc), 120 + gc * 120); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    spr('gourd', x, GY + 68 - gc * 10, gw * 1.15 * (1 + gc * 0.12), gw * 1.15 * 237 / 180 * (1 + gc * 0.12));
+    text('×' + gourdMul(), x, GY + 92, 30, '#fff3c0', 'N', 'center', { stroke: '#5a1a00', sw: 6 });
+    if (B.beam) { const k = B.beam.t / 0.45; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#ffd860'; ctx.lineWidth = 14 * (1 - k) + 2; ctx.beginPath(); ctx.moveTo(B.beam.x, GY); ctx.lineTo(360, 930); ctx.stroke(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
     ctx.strokeStyle = 'rgba(255,230,140,0.8)'; ctx.lineWidth = 3; ctx.setLineDash([8, 8]);
     ctx.beginPath(); ctx.moveTo(x - gw / 2, GY); ctx.lineTo(x + gw / 2, GY); ctx.stroke(); ctx.setLineDash([]);
   }
@@ -1010,29 +1067,62 @@ const ATLAS = {"scroll":[0,0,300,440],"paper":[302,0,140,272],"gourd":[444,0,180
     spr('box', LX, LY - 10, 96, 111);
         B.queue.slice(0, 3).forEach((k, i) => spr('c_' + k, 510 + i * 52, 528, i ? 40 : 48, i ? 40 : 48, i ? 0.75 : 1));
     if (B.state !== 'aim') return;
-    // 预览：只算墙反弹的抛物线
-    const segs = B.wu.tianyan ? 6 : 3, maxLen = segs * 170;
-    let x = LX, y = LY + 10, vx = Math.sin(B.aim) * V0 * (D.COINS[B.queue[0]].fx?.speed || 1), vy = Math.cos(B.aim) * V0 * (D.COINS[B.queue[0]].fx?.speed || 1), len = 0, i = 0, firstPin = null;
-    ctx.fillStyle = 'rgba(255,240,190,0.85)';
-    const dt = 1 / 120;
-    while (len < maxLen && y < BOT) {
-      const nx = x + vx * dt, ny = y + vy * dt; vy += GRAV * dt;
-      len += Math.hypot(nx - x, ny - y); x = nx; y = ny;
-      if (x < 15) { x = 15; vx = -vx * 0.85; } if (x > W - 15) { x = W - 15; vx = -vx * 0.85; }
-      if (B.wu.tianyan && !firstPin) firstPin = B.pins.find(p => !p.broken && Math.hypot(p.x - x, p.y - y) < PIN_R + 15);
-      if (++i % 4 === 0) { ctx.globalAlpha = 1 - len / maxLen * 0.8; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); }
-      if (firstPin) break;
-    }
+    // 预览（v0.1）：沿抛物线算到第 1 颗钉，标出钉和反弹方向；天眼再算一次反弹，标出第 2 颗
+    const sp = V0 * (D.COINS[B.queue[0]].fx?.speed || 1), cr = 16 * (B.wu.zhongqian ? 1.3 : 1), ce = 0.72 * (D.COINS[B.queue[0]].fx?.bounce || 1);
+    const trace = (x, y, vx, vy, skip, dots) => {
+      const dt = 1 / 240;
+      for (let i = 0; i < 1200 && y < BOT + 30; i++) {
+        vy += GRAV * dt; x += vx * dt; y += vy * dt;
+        if (x < cr) { x = cr; vx = Math.abs(vx) * 0.85; } if (x > W - cr) { x = W - cr; vx = -Math.abs(vx) * 0.85; }
+        if (i % 8 === 0) dots.push([x, y]);
+        for (const p of B.pins) {
+          if (p.broken || p === skip) continue;
+          const dx = x - p.x, dy = y - p.y, d = Math.hypot(dx, dy);
+          if (d < cr + PIN_R) {
+            const nx = dx / d, ny = dy / d, vn = vx * nx + vy * ny;
+            const bx = vx - (1 + ce) * vn * nx, by = vy - (1 + ce) * vn * ny;
+            return { pin: p, x: p.x + nx * (cr + PIN_R), y: p.y + ny * (cr + PIN_R), vx: bx, vy: by };
+          }
+        }
+      }
+      return null;
+    };
+    const dots = [], h1 = trace(LX, LY + 10, Math.sin(B.aim) * sp, Math.cos(B.aim) * sp, null, dots);
+    const PIN_TIP = { zhu: '暴击', jin: '香火', feng: '封印', lei: '雷', bamboo: '竹', qingxin: '复原' };
+    const mark = (h, main) => {
+      const c = PIN_COLOR[h.pin.type] || '#fff';
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = main ? 4 : 3; ctx.beginPath(); ctx.arc(h.pin.x, h.pin.y, 30, 0, 7); ctx.stroke();
+      ctx.strokeStyle = c; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(h.pin.x, h.pin.y, 36 + Math.sin(B.t * 8) * 3, 0, 7); ctx.stroke();
+      const tip = PIN_TIP[h.pin.type]; if (tip) text(tip, h.pin.x, h.pin.y - 50, 26, c, 'T', 'center', { stroke: '#200818', sw: 5 });
+    };
+    ctx.fillStyle = 'rgba(255,240,190,0.9)';
+    dots.forEach(([x, y], i) => { ctx.globalAlpha = 0.9 - 0.4 * i / dots.length; ctx.beginPath(); ctx.arc(x, y, 5, 0, 7); ctx.fill(); });
     ctx.globalAlpha = 1;
-    if (firstPin) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(firstPin.x, firstPin.y, 28, 0, 7); ctx.stroke(); }
+    if (h1) {
+      mark(h1, true);
+      // 反弹方向：短箭头
+      const m = Math.hypot(h1.vx, h1.vy) || 1, ux = h1.vx / m, uy = h1.vy / m, L2 = 70;
+      ctx.strokeStyle = 'rgba(255,240,190,0.9)'; ctx.lineWidth = 4; ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(h1.x, h1.y); ctx.lineTo(h1.x + ux * L2, h1.y + uy * L2); ctx.stroke(); ctx.setLineDash([]);
+      const ex = h1.x + ux * L2, ey = h1.y + uy * L2;
+      ctx.fillStyle = 'rgba(255,240,190,0.95)'; ctx.beginPath(); ctx.moveTo(ex + ux * 14, ey + uy * 14); ctx.lineTo(ex - uy * 9, ey + ux * 9); ctx.lineTo(ex + uy * 9, ey - ux * 9); ctx.closePath(); ctx.fill();
+      if (B.wu.tianyan) {
+        const d2 = [], h2 = trace(h1.x, h1.y, h1.vx, h1.vy, h1.pin, d2);
+        ctx.fillStyle = 'rgba(190,240,255,0.8)'; d2.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill(); });
+        if (h2) mark(h2, false);
+      }
+    }
   }
   function drawDmg() {
     if (!(B.state === 'fly' || B.state === 'tally') || !B.cur) return;
-    const v = B.showDmg; if (!v) return;
-    const crit = B.cur.crit, s = 84 + B.dmgPop * 30;
-    text(String(v), 360, 900, s, crit ? '#ff5a3a' : '#ffe28a', 'N', 'center', { stroke: '#2a0808', sw: 10, a: 0.92 });
+    if (!B.showDmg) { B.disp = 0; return; }
+    // 显示值向真实值滚动，入葫芦那一下能看到数字往上涨
+    B.disp = B.disp || 0; if (B.disp < B.showDmg) B.disp = Math.min(B.showDmg, B.disp + Math.max(1, (B.showDmg - B.disp) * 0.18)); else B.disp = B.showDmg;
+    const v = Math.round(B.disp), crit = B.cur.crit, caught = B.coins.some(c => c.caught), s = 84 + B.dmgPop * 30;
+    if (caught) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.4 * B.gCatch; ctx.drawImage(glow('#ffc040'), 360 - 200, 900 - 110, 400, 220); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; }
+    text(String(v), 360, 900, s, crit ? '#ff5a3a' : caught ? '#fff0a0' : '#ffe28a', 'N', 'center', { stroke: caught ? '#6a3000' : '#2a0808', sw: 10, a: 0.95 });
     text(`连撞 ${B.cur.hits}`, 360, 970, 30, '#fff', 'B', 'center', { stroke: '#2a0808', sw: 5, a: 0.9 });
-    if (B.state === 'tally' && B.coins.some(c => c.caught)) text(`入葫芦 ×${gourdMul()}`, 360, 1020, 34, '#ffd85e', 'T', 'center', { stroke: '#2a0808', sw: 6 });
+    if (caught) text(`入葫芦 ×${gourdMul()}`, 360, 1020, 38, '#ffd85e', 'T', 'center', { stroke: '#2a0808', sw: 6 });
     if (B.cur.seal) text(`封印 ×${Math.pow(0.8, B.cur.seal).toFixed(2)}`, 360, 1060, 26, '#c8a0ff', 'B', 'center', { stroke: '#2a0808', sw: 5 });
   }
   function drawHUD() {

@@ -2,7 +2,7 @@
 
 游戏《铜钱镇妖》：竖屏弹珠肉鸽。游方道士往符阵里撒铜钱，撞碎符钉攒伤害，打妖怪；每打完一关回道观整备。
 
-1. 画布：设计尺寸 720×1570。缩放比 = min(屏宽/720, 屏高/1570)，等比缩放居中，四周空白填 #0e0820。画面清晰度按设备像素比（最高 2）。所有触控坐标换算回设计坐标。
+1. 画布：设计尺寸 720×1570。缩放比 = min(屏宽/720, 屏高/1570)，等比缩放居中，四周空白填 #0e0820。画面清晰度按设备像素比（最高 2）。所有触控坐标换算回设计坐标。页面禁止滚动：html、body overflow:hidden，画布 CSS touch-action:none，触摸事件用 {passive:false} 并 preventDefault()，同时支持 touch 和 mouse。
 2. 平台胶囊：右上角 x 520–720、y 0–150 不放任何文字和按钮。
 3. 图片前缀 https://chen1110.github.io/tongqian/guide/img/
    背景（铺满 720×1570）：bg_dg.jpg 道观；bg1.jpg bg2.jpg bg3.jpg bg4.jpg 第1–4章。
@@ -13,7 +13,7 @@
    标题 https://chen1110.github.io/tongqian/guide/font/t.woff2　数字 https://chen1110.github.io/tongqian/guide/font/n.woff2　正文 https://chen1110.github.io/tongqian/guide/font/b.woff2
    缺字时退回系统黑体。后文「标题字/数字字/正文字」指这三款。
 5. 描边字：先描边再填色，线宽约字号的 1/7，圆角连接。
-6. 场景：道观、章节地图、战斗、结算、钱袋、符箓、香火铺、镇妖簿、角色。弹窗盖在场景上，弹窗打开时下层不响应点击。
+6. 场景：道观、章节地图、战斗、结算、钱袋、符箓、香火铺、镇妖簿、角色。弹窗盖在场景上，弹窗打开时下层不响应点击、战斗暂停；弹窗必须真的画在最上层，不能出现「有弹窗标记却看不见」而卡死。
 7. 存档：全部进度存在 localStorage，键名 tqzy_save_v1，值是 JSON。初始：
 {v:1, xiang:0, dan:0, coins:{tongqian:{lv:1}}, fus:{}, bag:["tongqian","tongqian","tongqian"], equip:[], role:"daoshi", roles:{daoshi:1}, stars:{}, clears:{}, seen:{}, chests:{}, shop:null, guide:{}, tut:{}, sound:1, ch:1}
    任何数值一变立即保存。读档失败就用初始值。

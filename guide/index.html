@@ -22,11 +22,11 @@ figcaption{font-size:12px;color:var(--mut);word-break:break-all} code{font-size:
 <div class="box"><b>给 AI 的用法</b>：按顺序一步一步做，每步做完能运行再做下一步。每步里的文字、数字、颜色、坐标都照抄，不要改；图片用素材表里的网址原样贴图。<br>
 <b>试玩版（本说明书原版）</b>：<a href="../" style="color:var(--acc)">https://chen1110.github.io/tongqian/</a>，做出来要和它一致。</div>
 <nav><a href="#s1">1. 基础框架、素材、存档</a><a href="#s2">2. 战斗画面布局</a><a href="#s3">3. 瞄准、铜钱物理、葫芦</a><a href="#s4">4. 符钉与伤害</a><a href="#s5">5. 回合、妖怪意图、胜负三星</a><a href="#s6">6. 阵型 0–4</a><a href="#s7">7. 阵型 5–9</a><a href="#s8">8. 关卡与妖怪数值</a><a href="#s9">9. 剧情与台词</a><a href="#s10">10. 顿悟三选一</a><a href="#s11">11. 道观、章节地图、关前整备、结算</a><a href="#s12">12. 钱袋、开光、铜钱</a><a href="#s13">13. 符箓、香火铺</a><a href="#s14">14. 镇妖簿、角色、收藏引导、音效</a><a href="#assets">素材表（77 张）</a><a href="#shots">效果图</a></nav>
-<section id="s1"><h2>第 1 步　基础框架、素材、存档 <span class="n">1571 字</span><button onclick="cp(1)">复制本步</button></h2><pre id="t1">【第1步 基础框架】所有文字、数字、颜色一字不改，不要自己增加、删减或替换内容。图片一律用下面给的网址原样贴图，不重画、不改色。坐标都是 720×1570 设计坐标，(x,y) 指中心点，写「左上」的除外。
+<section id="s1"><h2>第 1 步　基础框架、素材、存档 <span class="n">1725 字</span><button onclick="cp(1)">复制本步</button></h2><pre id="t1">【第1步 基础框架】所有文字、数字、颜色一字不改，不要自己增加、删减或替换内容。图片一律用下面给的网址原样贴图，不重画、不改色。坐标都是 720×1570 设计坐标，(x,y) 指中心点，写「左上」的除外。
 
 游戏《铜钱镇妖》：竖屏弹珠肉鸽。游方道士往符阵里撒铜钱，撞碎符钉攒伤害，打妖怪；每打完一关回道观整备。
 
-1. 画布：设计尺寸 720×1570。缩放比 = min(屏宽/720, 屏高/1570)，等比缩放居中，四周空白填 #0e0820。画面清晰度按设备像素比（最高 2）。所有触控坐标换算回设计坐标。
+1. 画布：设计尺寸 720×1570。缩放比 = min(屏宽/720, 屏高/1570)，等比缩放居中，四周空白填 #0e0820。画面清晰度按设备像素比（最高 2）。所有触控坐标换算回设计坐标。页面禁止滚动：html、body overflow:hidden，画布 CSS touch-action:none，触摸事件用 {passive:false} 并 preventDefault()，同时支持 touch 和 mouse。
 2. 平台胶囊：右上角 x 520–720、y 0–150 不放任何文字和按钮。
 3. 图片前缀 https://chen1110.github.io/tongqian/guide/img/
    背景（铺满 720×1570）：bg_dg.jpg 道观；bg1.jpg bg2.jpg bg3.jpg bg4.jpg 第1–4章。
@@ -37,7 +37,7 @@ figcaption{font-size:12px;color:var(--mut);word-break:break-all} code{font-size:
    标题 https://chen1110.github.io/tongqian/guide/font/t.woff2　数字 https://chen1110.github.io/tongqian/guide/font/n.woff2　正文 https://chen1110.github.io/tongqian/guide/font/b.woff2
    缺字时退回系统黑体。后文「标题字/数字字/正文字」指这三款。
 5. 描边字：先描边再填色，线宽约字号的 1/7，圆角连接。
-6. 场景：道观、章节地图、战斗、结算、钱袋、符箓、香火铺、镇妖簿、角色。弹窗盖在场景上，弹窗打开时下层不响应点击。
+6. 场景：道观、章节地图、战斗、结算、钱袋、符箓、香火铺、镇妖簿、角色。弹窗盖在场景上，弹窗打开时下层不响应点击、战斗暂停；弹窗必须真的画在最上层，不能出现「有弹窗标记却看不见」而卡死。
 7. 存档：全部进度存在 localStorage，键名 tqzy_save_v1，值是 JSON。初始：
 {v:1, xiang:0, dan:0, coins:{tongqian:{lv:1}}, fus:{}, bag:[&quot;tongqian&quot;,&quot;tongqian&quot;,&quot;tongqian&quot;], equip:[], role:&quot;daoshi&quot;, roles:{daoshi:1}, stars:{}, clears:{}, seen:{}, chests:{}, shop:null, guide:{}, tut:{}, sound:1, ch:1}
    任何数值一变立即保存。读档失败就用初始值。

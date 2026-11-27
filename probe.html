@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>外链探针</title>
+<style>
+  html,body{margin:0;background:#1d1740;color:#f3e6c4;font:16px/1.5 -apple-system,"PingFang SC",sans-serif}
+  .wrap{padding:120px 20px 40px}
+  h1{font-size:22px;margin:0 0 12px;color:#ffd36a}
+  table{border-collapse:collapse;width:100%}
+  td{padding:6px 4px;border-bottom:1px solid #3a3170;vertical-align:top;word-break:break-all}
+  td:first-child{width:38%;color:#bfb3e6}
+  .ok{color:#7ee08a}.bad{color:#ff7a6b}
+  a.btn{display:block;margin:20px 0 0;padding:14px;text-align:center;background:#b3261e;color:#fff;border-radius:10px;text-decoration:none;font-size:18px}
+  #tap{margin-top:12px;color:#bfb3e6}
+</style></head>
+<body><div class="wrap">
+<h1>铜钱镇妖 外链探针 v1</h1>
+<table id="t"></table>
+<div id="tap">点一下屏幕测触控：0 次</div>
+<a class="btn" href="./">进入游戏</a>
+</div>
+<script>
+(function(){
+  var rows=[], t=document.getElementById('t');
+  function row(k,v,cls){rows.push('<tr><td>'+k+'</td><td class="'+(cls||'')+'">'+v+'</td></tr>');}
+  var inFrame; try{inFrame=window.self!==window.top;}catch(e){inFrame=true;}
+  row('运行位置', inFrame?'在 iframe 里':'顶层页面');
+  var ref=''; try{ref=document.referrer||'（空）';}catch(e){ref='读不到';}
+  row('来源页', ref);
+  row('视口 CSS 像素', innerWidth+' × '+innerHeight+'，DPR '+(window.devicePixelRatio||1));
+  row('折算 720 宽画布', '720 × '+Math.round(innerHeight*720/innerWidth));
+  // localStorage 跨次保留
+  var K='tongqian_probe_v1', ls='';
+  try{
+    var n=parseInt(localStorage.getItem(K)||'0',10)+1;
+    localStorage.setItem(K,String(n));
+    var back=localStorage.getItem(K);
+    ls = back===String(n) ? (n>1?'可写，第 '+n+' 次打开（跨次保留 ✔）':'可写，第 1 次打开（关掉重进再看）') : '写入后读不回';
+    row('localStorage', ls, back===String(n)?(n>1?'ok':''):'bad');
+  }catch(e){ row('localStorage','被拦：'+e.name,'bad'); }
+  try{ sessionStorage.setItem('p','1'); row('sessionStorage', sessionStorage.getItem('p')==='1'?'可写':'读不回'); }catch(e){ row('sessionStorage','被拦：'+e.name,'bad'); }
+  try{ document.cookie='tqp=1;max-age=86400;SameSite=None;Secure'; row('cookie', /tqp=1/.test(document.cookie)?'可写':'写不进（第三方 cookie 被拦）'); }catch(e){ row('cookie','被拦','bad'); }
+  row('存储分区 API', 'hasStorageAccess' in document ? '有（可能分区）' : '无');
+  row('UA', navigator.userAgent);
+  t.innerHTML=rows.join('');
+  if('hasStorageAccess' in document){ document.hasStorageAccess().then(function(h){ t.insertAdjacentHTML('beforeend','<tr><td>hasStorageAccess</td><td>'+h+'</td></tr>'); }).catch(function(){}); }
+  var c=0; addEventListener('pointerdown',function(){ c++; document.getElementById('tap').textContent='点一下屏幕测触控：'+c+' 次'; });
+})();
+</script>
+</body></html>
